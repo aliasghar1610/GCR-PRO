@@ -1,24 +1,22 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { GoogleGenAI } from "@google/genai";
 
 // Server-side only — import this into API routes, never into client
-// components. Reads ANTHROPIC_API_KEY from the environment.
-const client = new Anthropic();
+// components. Reads GEMINI_API_KEY from the environment.
+const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-const MODEL = "claude-opus-5";
+// Override with GEMINI_MODEL if Google renames/retires this model.
+const MODEL = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
 
-export async function askClaude(system: string, userContent: string): Promise<string> {
-  const response = await client.messages.create({
+export async function askGemini(system: string, userContent: string): Promise<string> {
+  const response = await client.models.generateContent({
     model: MODEL,
-    max_tokens: 8192,
-    system,
-    messages: [{ role: "user", content: userContent }],
+    contents: userContent,
+    config: { systemInstruction: system },
   });
 
-  const textBlock = response.content.find(
-    (b): b is Anthropic.TextBlock => b.type === "text"
-  );
-  if (!textBlock) {
+  const text = response.text;
+  if (!text) {
     throw new Error("No text response from the model.");
   }
-  return textBlock.text;
+  return text;
 }

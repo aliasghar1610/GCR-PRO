@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getDriveFileText } from "@/lib/drive";
-import { askClaude } from "@/lib/ai";
+import { askGemini } from "@/lib/ai";
 
 // Deliberately asks for a structured study aid, not a final answer to turn
 // in — keeps this on the right side of academic integrity.
@@ -54,7 +54,7 @@ export async function POST(req: Request) {
   }${attachmentText}`;
 
   try {
-    const result = await askClaude(SYSTEM_PROMPT, userContent);
+    const result = await askGemini(SYSTEM_PROMPT, userContent);
     return NextResponse.json({ result });
   } catch (err) {
     console.error("AI solve failed:", err);

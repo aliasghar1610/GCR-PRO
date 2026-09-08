@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getDriveFileText } from "@/lib/drive";
-import { askClaude } from "@/lib/ai";
+import { askGemini } from "@/lib/ai";
 
 const SYSTEM_PROMPT = `You generate multiple-choice quiz questions from study material. \
 Respond with ONLY a JSON array (no prose, no markdown code fences) of exactly 5 objects, each shaped exactly as:
@@ -109,7 +109,7 @@ export async function POST(req: Request) {
 
   let questions: RawQuestion[];
   try {
-    const raw = await askClaude(SYSTEM_PROMPT, material);
+    const raw = await askGemini(SYSTEM_PROMPT, material);
     questions = parseQuizJson(raw);
   } catch (err) {
     console.error("Quiz generation failed:", err);

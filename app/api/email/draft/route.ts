@@ -3,7 +3,7 @@ import { google } from "googleapis";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getGoogleAuthClient } from "@/lib/google-auth";
-import { askClaude } from "@/lib/ai";
+import { askGemini } from "@/lib/ai";
 
 const SYSTEM_PROMPT = `You write polite, well-structured, concise emails from a student to their \
 professor. Given a recipient name, a topic, and a tone, write ONLY the email body — no subject \
@@ -52,7 +52,7 @@ export async function POST(req: Request) {
 
   let draftText: string;
   try {
-    draftText = await askClaude(SYSTEM_PROMPT, userContent);
+    draftText = await askGemini(SYSTEM_PROMPT, userContent);
   } catch (err) {
     console.error("AI email draft failed:", err);
     return NextResponse.json({ error: "AI request failed" }, { status: 500 });
