@@ -5,7 +5,9 @@ import { GoogleGenAI } from "@google/genai";
 const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 // Override with GEMINI_MODEL if Google renames/retires this model.
-const MODEL = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
+// (gemini-2.5-flash was already retired for new users as of this writing —
+// verify against aistudio.google.com if this one stops working too.)
+const MODEL = process.env.GEMINI_MODEL ?? "gemini-3.6-flash";
 
 export async function askGemini(system: string, userContent: string): Promise<string> {
   const response = await client.models.generateContent({
