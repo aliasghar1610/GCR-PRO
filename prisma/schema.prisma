@@ -1,0 +1,55 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  image        String?
+  accessToken  String? // Google OAuth token, for API calls
+  refreshToken String?
+  createdAt    DateTime @default(now())
+  courses      Course[]
+}
+
+model Course {
+  id                 String         @id // Google's courseId
+  userId             String
+  user               User           @relation(fields: [userId], references: [id])
+  name               String
+  section            String?
+  descriptionHeading String?
+  room               String?
+  ownerName          String?
+  assignments        Assignment[]
+  announcements      Announcement[]
+  syncedAt           DateTime       @default(now())
+}
+
+model Assignment {
+  id            String    @id // Google's courseWork id
+  courseId      String
+  course        Course    @relation(fields: [courseId], references: [id])
+  title         String
+  description   String?
+  dueDate       DateTime?
+  state         String? // PUBLISHED, DRAFT, etc.
+  alternateLink String?
+  syncedAt      DateTime  @default(now())
+}
+
+model Announcement {
+  id            String    @id
+  courseId      String
+  course        Course    @relation(fields: [courseId], references: [id])
+  text          String?
+  alternateLink String?
+  createdAt     DateTime?
+  syncedAt      DateTime  @default(now())
+}
