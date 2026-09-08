@@ -45,6 +45,9 @@ export default async function DashboardPage() {
         <nav className="flex gap-4 text-sm underline">
           <Link href="/dashboard/grades">Grades</Link>
           <Link href="/dashboard/professors">Professors</Link>
+          <Link href="/dashboard/solver">AI Solver</Link>
+          <Link href="/dashboard/quiz">Quiz</Link>
+          <Link href="/dashboard/email">Email Writer</Link>
           <Link href="/">Home</Link>
         </nav>
       </div>

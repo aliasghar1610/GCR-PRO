@@ -77,6 +77,10 @@ async function syncClassroom(userId: string) {
 
     for (const work of courseWork) {
       if (!work.id) continue;
+      const driveFileIds = (work.materials ?? [])
+        .map((m) => m.driveFile?.driveFile?.id)
+        .filter((id): id is string => !!id);
+
       await prisma.assignment.upsert({
         where: { id: work.id },
         update: {
@@ -85,6 +89,7 @@ async function syncClassroom(userId: string) {
           dueDate: toDueDate(work.dueDate, work.dueTime),
           state: work.state ?? null,
           alternateLink: work.alternateLink ?? null,
+          driveFileIds,
           syncedAt: new Date(),
         },
         create: {
@@ -95,6 +100,7 @@ async function syncClassroom(userId: string) {
           dueDate: toDueDate(work.dueDate, work.dueTime),
           state: work.state ?? null,
           alternateLink: work.alternateLink ?? null,
+          driveFileIds,
         },
       });
       assignmentCount++;

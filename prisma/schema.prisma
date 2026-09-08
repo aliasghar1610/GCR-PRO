@@ -42,6 +42,7 @@ model Assignment {
   dueDate       DateTime?
   state         String? // PUBLISHED, DRAFT, etc.
   alternateLink String?
+  driveFileIds  String[] // Drive file IDs from coursework materials, if any
   submissions   Submission[]
   syncedAt      DateTime     @default(now())
 }
@@ -77,6 +78,37 @@ model AlertLog {
   alertedAt    DateTime @default(now())
 
   @@unique([assignmentId, userId])
+}
+
+model Quiz {
+  id                 String         @id @default(cuid())
+  userId             String
+  courseId           String?
+  sourceAssignmentId String?
+  title              String
+  createdAt          DateTime       @default(now())
+  questions          QuizQuestion[]
+  attempts           QuizAttempt[]
+}
+
+model QuizQuestion {
+  id            String  @id @default(cuid())
+  quizId        String
+  quiz          Quiz    @relation(fields: [quizId], references: [id])
+  question      String
+  options       Json // array of choices
+  correctAnswer String
+  explanation   String?
+}
+
+model QuizAttempt {
+  id      String   @id @default(cuid())
+  quizId  String
+  quiz    Quiz     @relation(fields: [quizId], references: [id])
+  userId  String
+  score   Int
+  answers Json // student's chosen answers
+  takenAt DateTime @default(now())
 }
 
 model Announcement {
