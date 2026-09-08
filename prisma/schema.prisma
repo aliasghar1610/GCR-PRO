@@ -29,19 +29,54 @@ model Course {
   ownerName          String?
   assignments        Assignment[]
   announcements      Announcement[]
+  teachers           Teacher[]
   syncedAt           DateTime       @default(now())
 }
 
 model Assignment {
-  id            String    @id // Google's courseWork id
+  id            String       @id // Google's courseWork id
   courseId      String
-  course        Course    @relation(fields: [courseId], references: [id])
+  course        Course       @relation(fields: [courseId], references: [id])
   title         String
   description   String?
   dueDate       DateTime?
   state         String? // PUBLISHED, DRAFT, etc.
   alternateLink String?
-  syncedAt      DateTime  @default(now())
+  submissions   Submission[]
+  syncedAt      DateTime     @default(now())
+}
+
+model Submission {
+  id            String     @id // Google studentSubmission id
+  assignmentId  String
+  assignment    Assignment @relation(fields: [assignmentId], references: [id])
+  userId        String
+  assignedGrade Float? // null until teacher grades it
+  state         String? // TURNED_IN, RETURNED, etc.
+  late          Boolean?   @default(false)
+  syncedAt      DateTime   @default(now())
+}
+
+model Teacher {
+  id       String   @id @default(cuid())
+  courseId String
+  course   Course   @relation(fields: [courseId], references: [id])
+  googleId String // teacher's Google userId
+  name     String
+  email    String? // requires classroom.profile.emails scope
+  photoUrl String?
+  syncedAt DateTime @default(now())
+
+  @@unique([courseId, googleId])
+}
+
+model AlertLog {
+  id           String   @id @default(cuid())
+  assignmentId String
+  userId       String
+  alertedAt    DateTime @default(now())
+
+  @@unique([assignmentId, userId])
 }
 
 model Announcement {

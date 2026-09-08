@@ -4,7 +4,13 @@ import { useState } from "react";
 import Link from "next/link";
 import { signIn, signOut, useSession } from "next-auth/react";
 
-type SyncResult = { courses: number; assignments: number; announcements: number };
+type SyncResult = {
+  courses: number;
+  assignments: number;
+  announcements: number;
+  submissions: number;
+  teachers: number;
+};
 
 export default function Home() {
   const { data: session, status } = useSession();
@@ -65,7 +71,9 @@ export default function Home() {
       {result && (
         <p>
           Synced {result.courses} courses, {result.assignments} assignments,{" "}
-          {result.announcements} announcements. <Link href="/synced" className="underline">View synced data</Link>
+          {result.announcements} announcements, {result.submissions} submissions,{" "}
+          {result.teachers} teachers.{" "}
+          <Link href="/dashboard" className="underline">Go to dashboard</Link>
         </p>
       )}
       {error && <p className="text-red-600">{error}</p>}

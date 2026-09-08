@@ -42,6 +42,8 @@ async function syncClassroom(userId: string) {
 
   let assignmentCount = 0;
   let announcementCount = 0;
+  let submissionCount = 0;
+  let teacherCount = 0;
 
   for (const course of courses) {
     if (!course.id) continue;
@@ -122,11 +124,76 @@ async function syncClassroom(userId: string) {
       });
       announcementCount++;
     }
+
+    // "-" requests submissions for every piece of coursework in the course
+    // in one call instead of listing per-assignment.
+    const submissions =
+      (
+        await classroom.courses.courseWork.studentSubmissions.list({
+          courseId: course.id,
+          courseWorkId: "-",
+        })
+      ).data.studentSubmissions ?? [];
+
+    for (const submission of submissions) {
+      if (!submission.id || !submission.courseWorkId) continue;
+      // studentSubmissions.list is scoped to the caller's own token, so every
+      // row here belongs to `userId` — store our internal id, not Google's
+      // raw submission.userId, to stay consistent with Course.userId etc.
+      await prisma.submission.upsert({
+        where: { id: submission.id },
+        update: {
+          assignedGrade: submission.assignedGrade ?? null,
+          state: submission.state ?? null,
+          late: submission.late ?? false,
+          syncedAt: new Date(),
+        },
+        create: {
+          id: submission.id,
+          assignmentId: submission.courseWorkId,
+          userId,
+          assignedGrade: submission.assignedGrade ?? null,
+          state: submission.state ?? null,
+          late: submission.late ?? false,
+        },
+      });
+      submissionCount++;
+    }
+
+    // A course may have multiple teachers — store all of them.
+    const teachers =
+      (await classroom.courses.teachers.list({ courseId: course.id })).data
+        .teachers ?? [];
+
+    for (const teacher of teachers) {
+      if (!teacher.userId || !teacher.profile?.name?.fullName) continue;
+      await prisma.teacher.upsert({
+        where: { courseId_googleId: { courseId: course.id, googleId: teacher.userId } },
+        update: {
+          name: teacher.profile.name.fullName,
+          // Only populated if the classroom.profile.emails / .profile.photos
+          // scopes were granted — otherwise these come back null.
+          email: teacher.profile.emailAddress ?? null,
+          photoUrl: teacher.profile.photoUrl ?? null,
+          syncedAt: new Date(),
+        },
+        create: {
+          courseId: course.id,
+          googleId: teacher.userId,
+          name: teacher.profile.name.fullName,
+          email: teacher.profile.emailAddress ?? null,
+          photoUrl: teacher.profile.photoUrl ?? null,
+        },
+      });
+      teacherCount++;
+    }
   }
 
   return NextResponse.json({
     courses: courses.length,
     assignments: assignmentCount,
     announcements: announcementCount,
+    submissions: submissionCount,
+    teachers: teacherCount,
   });
 }
