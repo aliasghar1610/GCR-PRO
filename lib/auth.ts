@@ -2,7 +2,15 @@ import type { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import { prisma } from "@/lib/prisma";
 
-// Phase 2 scopes only — do not widen without updating the OAuth consent screen.
+// Do not widen without updating the OAuth consent screen. Every scope here must
+// back a shipped feature (Phase 6.5 audit):
+// - classroom.profile.emails / .photos: Teacher.email / photoUrl on the
+//   professors page and the email drafter's recipient list.
+// - gmail.compose: /api/email/draft saves drafts only, never sends.
+// No Drive scope is requested — the solver/quiz generator read Drive
+// attachments via a client-side Google Picker flow scoped to drive.file on
+// demand instead (see components/DriveAttachButton.tsx), which avoids the
+// restricted drive.readonly scope entirely.
 const SCOPES = [
   "openid",
   "email",
@@ -11,9 +19,20 @@ const SCOPES = [
   "https://www.googleapis.com/auth/classroom.coursework.me.readonly",
   "https://www.googleapis.com/auth/classroom.announcements.readonly",
   "https://www.googleapis.com/auth/classroom.rosters.readonly",
+  "https://www.googleapis.com/auth/classroom.profile.emails",
+  "https://www.googleapis.com/auth/classroom.profile.photos",
+  "https://www.googleapis.com/auth/gmail.compose",
 ].join(" ");
 
 export const authOptions: NextAuthOptions = {
+  // Our sign-in UI lives at "/" (see app/page.tsx) — route both the sign-in
+  // entry point and OAuth failures back there instead of NextAuth's default
+  // built-in pages, so a cancelled/failed Google login lands on our own
+  // error state rather than an unstyled NextAuth screen.
+  pages: {
+    signIn: "/",
+    error: "/",
+  },
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
