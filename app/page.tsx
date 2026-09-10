@@ -1,82 +1,38 @@
-"use client";
+import { Suspense } from "react";
+import { redirect } from "next/navigation";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { sessionUserExists } from "@/lib/sessionUser";
+import { LoginCard } from "./LoginCard";
 
-import { useState } from "react";
-import Link from "next/link";
-import { signIn, signOut, useSession } from "next-auth/react";
-
-type SyncResult = {
-  courses: number;
-  assignments: number;
-  announcements: number;
-  submissions: number;
-  teachers: number;
-};
-
-export default function Home() {
-  const { data: session, status } = useSession();
-  const [syncing, setSyncing] = useState(false);
-  const [result, setResult] = useState<SyncResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  async function handleSync() {
-    setSyncing(true);
-    setError(null);
-    setResult(null);
-    try {
-      const res = await fetch("/api/sync", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Sync failed");
-      setResult(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Sync failed");
-    } finally {
-      setSyncing(false);
-    }
-  }
-
-  if (status === "loading") {
-    return <main className="p-8">Loading...</main>;
-  }
-
-  if (!session) {
-    return (
-      <main className="p-8 flex flex-col gap-4">
-        <h1 className="text-xl font-semibold">GCR PRO</h1>
-        <button
-          onClick={() => signIn("google")}
-          className="border rounded px-4 py-2 w-fit"
-        >
-          Sign in with Google
-        </button>
-      </main>
-    );
+export default async function LoginPage() {
+  const session = await getServerSession(authOptions);
+  // Checking session.user.id alone isn't enough — a stale session (the
+  // User row behind it was deleted) would otherwise bounce here from
+  // /dashboard's own existence check, straight back to /dashboard, forever.
+  if (session?.user?.id && (await sessionUserExists(session.user.id))) {
+    redirect("/dashboard");
   }
 
   return (
-    <main className="p-8 flex flex-col gap-4">
-      <h1 className="text-xl font-semibold">GCR PRO</h1>
-      <p>
-        Signed in as {session.user?.name} ({session.user?.email})
-      </p>
-      <button onClick={() => signOut()} className="border rounded px-4 py-2 w-fit">
-        Sign out
-      </button>
-      <button
-        onClick={handleSync}
-        disabled={syncing}
-        className="border rounded px-4 py-2 w-fit disabled:opacity-50"
-      >
-        {syncing ? "Syncing..." : "Sync my Classroom"}
-      </button>
-      {result && (
-        <p>
-          Synced {result.courses} courses, {result.assignments} assignments,{" "}
-          {result.announcements} announcements, {result.submissions} submissions,{" "}
-          {result.teachers} teachers.{" "}
-          <Link href="/dashboard" className="underline">Go to dashboard</Link>
-        </p>
-      )}
-      {error && <p className="text-red-600">{error}</p>}
+    <main className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-bg-app px-4">
+      {/* Soft geometric background shapes — low opacity, purely decorative. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -top-32 -left-24 size-96 rounded-full bg-accent opacity-[0.06] blur-3xl"
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute top-1/3 -right-32 size-[28rem] rounded-full bg-accent opacity-[0.05] blur-3xl"
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -bottom-40 left-1/4 size-80 rounded-full bg-tag-2-solid opacity-[0.05] blur-3xl"
+      />
+
+      <Suspense fallback={null}>
+        <LoginCard />
+      </Suspense>
     </main>
   );
 }
