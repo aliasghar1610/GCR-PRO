@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { resolveUserId } from "@/lib/extensionAuth";
 
 export async function GET(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  const userId = session?.user?.id;
+  const userId = await resolveUserId(req);
   if (!userId) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   }
@@ -44,11 +42,13 @@ export async function GET(req: NextRequest) {
       id: a.id,
       title: a.title,
       courseName: a.course.name,
+      courseId: a.course.id,
     })),
     announcements: announcements.map((a) => ({
       id: a.id,
       text: a.text,
       courseName: a.course.name,
+      courseId: a.course.id,
     })),
   });
 }

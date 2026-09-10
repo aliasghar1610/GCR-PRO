@@ -2,25 +2,190 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/*
+ * GCR PRO design tokens — source of truth is CLAUDE.md §1.
+ * Raw tokens live as plain CSS variables (light values on :root, dark
+ * overrides under .dark) and are mirrored 1:1 into Tailwind's @theme so
+ * every token is also usable as a utility class, e.g. --bg-app -> bg-bg-app.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Surfaces */
+  --bg-app: #F4F6FA;
+  --bg-card: #FFFFFF;
+  --bg-subtle: #F8FAFC;
+  --bg-sidebar: #101B2D;
+  --bg-sidebar-hover: #1B2941;
+
+  /* Borders */
+  --border: #E5E9F0;
+  --border-strong: #D3DAE6;
+
+  /* Text */
+  --text-primary: #0F1F3D;
+  --text-body: #334155;
+  --text-muted: #64748B;
+  --text-inverse: #FFFFFF;
+  --text-sidebar: #9AA9C0;
+
+  /* Brand */
+  --accent: #2563EB;
+  --accent-hover: #1D4ED8;
+  --accent-soft: #EFF6FF;
+
+  /* Status */
+  --danger: #DC2626;
+  --danger-soft: #FEE2E2;
+  --warning: #D97706;
+  --warning-soft: #FEF3C7;
+  --success: #059669;
+  --success-soft: #D1FAE5;
+
+  /* Shape & depth */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --shadow-card: 0 1px 2px rgba(15, 31, 61, .04), 0 1px 3px rgba(15, 31, 61, .06);
+  --shadow-pop: 0 8px 24px rgba(15, 31, 61, .10);
+
+  /*
+   * Course tag palette — 8 muted tints. lib/courseColor.ts hashes each
+   * Google courseId to one of these deterministically, so a course keeps
+   * the same tag color everywhere (dashboard, sidebar, extension).
+   */
+  --tag-1-solid: #2563EB; --tag-1-soft: #EFF6FF; /* blue */
+  --tag-2-solid: #7C3AED; --tag-2-soft: #F5F3FF; /* violet */
+  --tag-3-solid: #0D9488; --tag-3-soft: #F0FDFA; /* teal */
+  --tag-4-solid: #D97706; --tag-4-soft: #FFFBEB; /* amber */
+  --tag-5-solid: #E11D48; --tag-5-soft: #FFF1F2; /* rose */
+  --tag-6-solid: #059669; --tag-6-soft: #ECFDF5; /* emerald */
+  --tag-7-solid: #4F46E5; --tag-7-soft: #EEF2FF; /* indigo */
+  --tag-8-solid: #0891B2; --tag-8-soft: #ECFEFF; /* cyan */
+}
+
+/*
+ * Dark mode: invert surfaces, keep the same blue. Sidebar navy becomes the
+ * page background, cards become #16202F, borders #243349, accent lifts to
+ * #3B82F6 for on-dark text contrast (backgrounds/borders keep #2563EB).
+ */
+.dark {
+  --bg-app: #0B1220;
+  --bg-card: #16202F;
+  --bg-subtle: #101827;
+  --bg-sidebar: #0B1220;
+  --bg-sidebar-hover: #1B2941;
+
+  --border: #243349;
+  --border-strong: #32455F;
+
+  --text-primary: #F1F5F9;
+  --text-body: #CBD5E1;
+  --text-muted: #94A3B8;
+  --text-inverse: #FFFFFF;
+  --text-sidebar: #9AA9C0;
+
+  /* Same brand blue, lifted a step for text/fill legibility against the
+     darker surfaces (spec §1: "lift to #3B82F6 for text-on-dark contrast"). */
+  --accent: #3B82F6;
+  --accent-hover: #2563EB;
+  --accent-soft: #17284A;
+
+  --danger: #F87171;
+  --danger-soft: #3B1418;
+  --warning: #FBBF24;
+  --warning-soft: #3A2A0A;
+  --success: #34D399;
+  --success-soft: #0B2E22;
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, .24), 0 1px 3px rgba(0, 0, 0, .32);
+  --shadow-pop: 0 8px 24px rgba(0, 0, 0, .40);
+
+  /* Same hues, soft tints darkened so text stays readable on dark cards. */
+  --tag-1-solid: #60A5FA; --tag-1-soft: #16233D;
+  --tag-2-solid: #A78BFA; --tag-2-soft: #241B3D;
+  --tag-3-solid: #2DD4BF; --tag-3-soft: #0F2A28;
+  --tag-4-solid: #FBBF24; --tag-4-soft: #332405;
+  --tag-5-solid: #FB7185; --tag-5-soft: #3A1620;
+  --tag-6-solid: #34D399; --tag-6-soft: #0F2A22;
+  --tag-7-solid: #818CF8; --tag-7-soft: #1E2050;
+  --tag-8-solid: #22D3EE; --tag-8-soft: #0C2A31;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
 
-.dark {
-  --background: #0a0a0a;
-  --foreground: #ededed;
+  --color-bg-app: var(--bg-app);
+  --color-bg-card: var(--bg-card);
+  --color-bg-subtle: var(--bg-subtle);
+  --color-bg-sidebar: var(--bg-sidebar);
+  --color-bg-sidebar-hover: var(--bg-sidebar-hover);
+
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+
+  --color-text-primary: var(--text-primary);
+  --color-text-body: var(--text-body);
+  --color-text-muted: var(--text-muted);
+  --color-text-inverse: var(--text-inverse);
+  --color-text-sidebar: var(--text-sidebar);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+
+  --shadow-card: var(--shadow-card);
+  --shadow-pop: var(--shadow-pop);
+
+  --color-tag-1-solid: var(--tag-1-solid); --color-tag-1-soft: var(--tag-1-soft);
+  --color-tag-2-solid: var(--tag-2-solid); --color-tag-2-soft: var(--tag-2-soft);
+  --color-tag-3-solid: var(--tag-3-solid); --color-tag-3-soft: var(--tag-3-soft);
+  --color-tag-4-solid: var(--tag-4-solid); --color-tag-4-soft: var(--tag-4-soft);
+  --color-tag-5-solid: var(--tag-5-solid); --color-tag-5-soft: var(--tag-5-soft);
+  --color-tag-6-solid: var(--tag-6-solid); --color-tag-6-soft: var(--tag-6-soft);
+  --color-tag-7-solid: var(--tag-7-solid); --color-tag-7-soft: var(--tag-7-soft);
+  --color-tag-8-solid: var(--tag-8-solid); --color-tag-8-soft: var(--tag-8-soft);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg-app);
+  color: var(--text-body);
+  font-feature-settings: "tnum" 1;
+}
+
+* {
+  border-color: var(--border);
+}
+
+/* Numerals throughout the app (stat cards, scores, dates) stay tabular. */
+.tabular-nums,
+.font-tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.micro-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }
