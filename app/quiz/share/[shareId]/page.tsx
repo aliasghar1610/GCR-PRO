@@ -7,13 +7,21 @@ import { cn } from "@/lib/cn";
 export default async function QuizSharePage({
   params,
 }: {
-  params: Promise<{ id: string }>;
+  params: Promise<{ shareId: string }>;
 }) {
-  const { id } = await params;
+  const { shareId } = await params;
 
-  const quiz = await prisma.quiz.findUnique({
-    where: { id },
-    include: { questions: true },
+  // Looked up strictly by the random shareId — never by the quiz's primary
+  // key, and only for quizzes whose owner has actually opted into sharing.
+  // Nothing identifying the owner (their name, attempts or scores) is loaded.
+  const quiz = await prisma.quiz.findFirst({
+    where: { shareId },
+    select: {
+      title: true,
+      questions: {
+        select: { id: true, question: true, options: true, correctAnswer: true, explanation: true },
+      },
+    },
   });
 
   if (!quiz) {

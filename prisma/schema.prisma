@@ -93,6 +93,10 @@ model Quiz {
   courseId           String?
   sourceAssignmentId String?
   title              String
+  // Null until the owner explicitly shares. A separate 128-bit random value
+  // rather than the primary key, so a share link is an unguessable capability
+  // and quizzes are not readable by id enumeration.
+  shareId            String?        @unique
   createdAt          DateTime       @default(now())
   questions          QuizQuestion[]
   attempts           QuizAttempt[]

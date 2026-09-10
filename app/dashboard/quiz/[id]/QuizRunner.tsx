@@ -60,9 +60,20 @@ export function QuizRunner({
   }
 
   async function handleShare() {
-    const url = `${window.location.origin}/quiz/${quizId}/share`;
-    await navigator.clipboard.writeText(url);
-    toast("Read-only link copied");
+    // Sharing is opt-in: the server mints a random share id the first time,
+    // so a quiz has no public URL until the owner asks for one.
+    try {
+      const res = await fetch(`/api/quiz/${quizId}/share`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not create a share link");
+
+      await navigator.clipboard.writeText(
+        `${window.location.origin}/quiz/share/${data.shareId}`
+      );
+      toast("Read-only link copied");
+    } catch {
+      toast("Couldn't create a share link", "error");
+    }
   }
 
   function toggleExpanded(id: string) {
