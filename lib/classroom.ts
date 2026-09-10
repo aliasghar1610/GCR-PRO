@@ -1,3 +1,4 @@
+import "server-only";
 import { google, classroom_v1 } from "googleapis";
 import { getGoogleAuthClient } from "@/lib/google-auth";
 

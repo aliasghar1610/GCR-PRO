@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { SlideOver } from "@/components/ui/SlideOver";
 import { dueBucket, isCompleted } from "@/lib/assignmentStatus";
 import { gradePercent } from "@/lib/grade";
+import { safeExternalUrl } from "@/lib/safeUrl";
 import { cn } from "@/lib/cn";
 
 export type AssignmentRow = {
@@ -306,9 +307,9 @@ function AssignmentsClientInner({
               </div>
             )}
 
-            {activeRow.alternateLink && (
+            {safeExternalUrl(activeRow.alternateLink) && (
               <a
-                href={activeRow.alternateLink}
+                href={safeExternalUrl(activeRow.alternateLink)!}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 text-sm text-accent hover:underline"

@@ -24,6 +24,18 @@ function escapeHtml(value) {
   );
 }
 
+// Escaping makes a URL safe to sit inside an attribute, but it does not make
+// the URL itself safe — `javascript:` in an href still runs, and this panel is
+// an extension page holding the bearer token. Only http(s) links are rendered.
+function safeUrl(value) {
+  try {
+    const url = new URL(String(value));
+    return url.protocol === "https:" || url.protocol === "http:" ? url.href : "#";
+  } catch {
+    return "#";
+  }
+}
+
 // Mirrors lib/courseColor.ts's djb2 hash so a course keeps the same tag
 // color here as it has in the web app.
 function courseColorIndex(courseId) {
@@ -98,7 +110,7 @@ async function loadDeadlines() {
   els.deadlines.innerHTML = `<div class="card">${items
     .map(
       (d) => `
-      <a class="row" href="${escapeHtml(d.alternateLink ?? "#")}" target="_blank" rel="noopener">
+      <a class="row" href="${escapeHtml(safeUrl(d.alternateLink))}" target="_blank" rel="noopener noreferrer">
         ${badgeHtml(d.courseId, d.courseName)}
         <span class="row-body">
           <span class="row-title">${escapeHtml(d.title)}</span>
