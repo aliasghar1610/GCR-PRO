@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "GCR PRO",
+  "version": "0.1.0",
+  "description": "A smarter layer on top of Google Classroom.",
+  "permissions": ["storage", "sidePanel", "alarms"],
+  "host_permissions": [
+    "http://localhost:3000/*",
+    "https://classroom.google.com/*"
+  ],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["https://classroom.google.com/*"],
+      "js": ["content/content.js"],
+      "css": ["content/content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "side_panel": { "default_path": "sidepanel/panel.html" },
+  "action": { "default_title": "Open GCR PRO" },
+  "externally_connectable": {
+    "matches": ["http://localhost:3000/*"]
+  },
+  "icons": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" }
+}

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GCR PRO</title>
+    <link rel="stylesheet" href="panel.css" />
+  </head>
+  <body>
+    <header>
+      <div class="brand">
+        <span class="mark">G</span>
+        <span class="wordmark">GCR PRO</span>
+        <span id="sync-dot" class="sync-dot" title="Synced"></span>
+      </div>
+    </header>
+
+    <section id="disconnected" hidden>
+      <div class="empty-state">
+        <svg class="lock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="4" y="10" width="16" height="10" rx="2" />
+          <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+        </svg>
+        <p class="empty-title">Connect your account</p>
+        <p class="empty-desc">See your deadlines and search Classroom without leaving this tab.</p>
+        <button id="connect-btn" type="button" class="btn-primary">Connect account</button>
+      </div>
+    </section>
+
+    <main id="connected" hidden>
+      <div class="search-wrap">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="7" />
+          <path d="m21 21-4.3-4.3" />
+        </svg>
+        <input id="search-input" type="search" placeholder="Search courses, assignments…" />
+      </div>
+      <div id="search-results" class="search-results" hidden></div>
+
+      <section id="deadlines-section">
+        <h2>Due Soon</h2>
+        <div id="deadlines"></div>
+        <a class="view-all" href="http://localhost:3000/dashboard/assignments" target="_blank" rel="noopener">
+          View all →
+        </a>
+      </section>
+
+      <section id="course-section">
+        <h2 id="course-heading">This Course</h2>
+        <div id="professors"></div>
+      </section>
+    </main>
+
+    <footer>
+      <a id="dashboard-link" href="http://localhost:3000/dashboard" target="_blank" rel="noopener" class="btn-primary btn-block">
+        Open full dashboard
+      </a>
+    </footer>
+
+    <script src="panel.js"></script>
+  </body>
+</html>
