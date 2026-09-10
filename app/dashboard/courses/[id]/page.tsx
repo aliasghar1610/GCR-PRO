@@ -14,15 +14,25 @@ import { assignmentChipStatus } from "@/lib/assignmentStatus";
 import { gradePercent, courseAveragePercent } from "@/lib/grade";
 import { relativeTime } from "@/lib/relativeTime";
 import { courseColorClasses } from "@/lib/courseColor";
+import { safeExternalUrl } from "@/lib/safeUrl";
 import { cn } from "@/lib/cn";
 
-const courseInclude = {
-  assignments: { include: { submissions: true }, orderBy: { dueDate: "asc" } },
-  announcements: { orderBy: { createdAt: "desc" } },
-  teachers: true,
-} satisfies Prisma.CourseInclude;
+// Submissions must be scoped to the viewing user: Assignment rows are keyed by
+// Google's global coursework id, so a course shared with another GCR PRO user
+// carries their Submission rows too.
+const courseInclude = (userId: string) =>
+  ({
+    assignments: {
+      include: { submissions: { where: { userId } } },
+      orderBy: { dueDate: "asc" },
+    },
+    announcements: { orderBy: { createdAt: "desc" } },
+    teachers: true,
+  }) satisfies Prisma.CourseInclude;
 
-type CourseWithData = Prisma.CourseGetPayload<{ include: typeof courseInclude }>;
+type CourseWithData = Prisma.CourseGetPayload<{
+  include: ReturnType<typeof courseInclude>;
+}>;
 
 const TABS = [
   { key: "assignments", label: "Assignments" },
@@ -46,7 +56,7 @@ export default async function CourseDetailPage({
 
   const course = await prisma.course.findFirst({
     where: { id, userId },
-    include: courseInclude,
+    include: courseInclude(userId),
   });
 
   if (!course) notFound();
@@ -138,9 +148,9 @@ function AssignmentsTab({ course }: { course: CourseWithData }) {
                 <span className="text-sm tabular-nums text-text-body shrink-0">{percent}%</span>
               )}
               <StatusPill status={status} />
-              {a.alternateLink && (
+              {safeExternalUrl(a.alternateLink) && (
                 <a
-                  href={a.alternateLink}
+                  href={safeExternalUrl(a.alternateLink)!}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-text-muted hover:text-accent shrink-0"
@@ -178,9 +188,9 @@ function AnnouncementsTab({ course }: { course: CourseWithData }) {
             <span className="text-xs text-text-muted">
               {a.createdAt ? relativeTime(a.createdAt) : "Unknown date"}
             </span>
-            {a.alternateLink && (
+            {safeExternalUrl(a.alternateLink) && (
               <a
-                href={a.alternateLink}
+                href={safeExternalUrl(a.alternateLink)!}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 text-xs text-accent hover:underline shrink-0"

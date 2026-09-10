@@ -29,7 +29,10 @@ export default async function DashboardPage() {
   const courses = await prisma.course.findMany({
     where: { userId },
     include: {
-      assignments: { include: { submissions: true } },
+      // Submission rows are keyed by Google's global submission id and hang
+      // off the shared Assignment row, so a course shared with another GCR
+      // PRO user holds their submissions too. Always scope to this user.
+      assignments: { include: { submissions: { where: { userId } } } },
       announcements: true,
       teachers: true,
     },

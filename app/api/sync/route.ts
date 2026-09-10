@@ -6,6 +6,10 @@ import { getClassroomClient } from "@/lib/classroom";
 import { prisma } from "@/lib/prisma";
 import { isReauthRequiredError, clearStoredGoogleTokens } from "@/lib/google-auth";
 import { withRetry } from "@/lib/withRetry";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rateLimit";
+
+const RATE_LIMIT = 10;
+const RATE_WINDOW_MS = 10 * 60 * 1000;
 
 function toDueDate(
   date?: classroom_v1.Schema$Date | null,
@@ -25,6 +29,13 @@ export async function POST() {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   }
 
+  // Classroom's API quota is project-wide, so one user hammering sync degrades
+  // the app for everyone.
+  const limit = await checkRateLimit(userId, "sync", RATE_LIMIT, RATE_WINDOW_MS);
+  if (!limit.allowed) {
+    return rateLimitResponse("Classroom sync", limit.resetAt);
+  }
+
   try {
     return await syncClassroom(userId);
   } catch (err) {
@@ -38,9 +49,11 @@ export async function POST() {
         { status: 401 }
       );
     }
+    // Logged in full server-side, but never returned: upstream Google errors
+    // carry internal identifiers and quota details that clients shouldn't see.
     console.error("Classroom sync failed:", err);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Sync failed" },
+      { error: "Sync failed. Please try again in a moment." },
       { status: 500 }
     );
   }
@@ -63,6 +76,20 @@ async function syncCourse(
 ): Promise<CourseCounts> {
   const courseId = course.id;
   if (!courseId) return { assignments: 0, announcements: 0, submissions: 0, teachers: 0 };
+
+  // Course.id is Google's courseId, which is the SAME value for every student
+  // enrolled in that course. If a classmate who also uses GCR PRO synced first,
+  // this row belongs to them — writing our coursework and submissions
+  // underneath it would file our data inside their account. Skip instead.
+  // (Proper fix is a per-user key: see SECURITY-AUDIT.md "Shared-course row
+  // collision".)
+  const existing = await prisma.course.findUnique({
+    where: { id: courseId },
+    select: { userId: true },
+  });
+  if (existing && existing.userId !== userId) {
+    return { assignments: 0, announcements: 0, submissions: 0, teachers: 0 };
+  }
 
   await prisma.course.upsert({
     where: { id: courseId },

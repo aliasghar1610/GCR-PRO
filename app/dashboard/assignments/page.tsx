@@ -9,7 +9,9 @@ export default async function AssignmentsPage() {
 
   const assignments = await prisma.assignment.findMany({
     where: { course: { userId } },
-    include: { course: true, submissions: true },
+    // submissions scoped to this user — the Assignment row is shared with any
+    // other GCR PRO user enrolled in the same Classroom course.
+    include: { course: true, submissions: { where: { userId } } },
     orderBy: { dueDate: "asc" },
   });
 

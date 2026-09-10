@@ -16,7 +16,9 @@ export default async function CoursesPage() {
   const courses = await prisma.course.findMany({
     where: { userId },
     include: {
-      assignments: { include: { submissions: true } },
+      // submissions scoped to this user — course averages must never mix in a
+      // classmate's grades (Assignment rows are shared across users).
+      assignments: { include: { submissions: { where: { userId } } } },
       teachers: true,
     },
     orderBy: { name: "asc" },
