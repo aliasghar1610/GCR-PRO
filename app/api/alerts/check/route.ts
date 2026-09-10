@@ -2,18 +2,30 @@ import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { prisma } from "@/lib/prisma";
 
-const ALERT_WINDOW_MS = 48 * 60 * 60 * 1000;
+const MAX_LEAD_HOURS = 24 * 14; // widest per-user window we'll ever honor
 
-export async function GET() {
+export async function GET(req: Request) {
+  // This iterates every user's due assignments and sends email — it's meant
+  // to be called by a cron trigger, not left open to the public internet.
+  const cronSecret = process.env.CRON_SECRET;
+  const authHeader = req.headers.get("authorization");
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+    return NextResponse.json({ error: "Not authorized" }, { status: 401 });
+  }
+
   const now = new Date();
-  const cutoff = new Date(now.getTime() + ALERT_WINDOW_MS);
+  // Cast a wide net (the longest lead time anyone could have configured),
+  // then filter each assignment against its own user's lead time below —
+  // alertsEnabled/alertLeadHours are per-user (Settings > Notifications).
+  const widestCutoff = new Date(now.getTime() + MAX_LEAD_HOURS * 60 * 60 * 1000);
 
   const dueSoon = await prisma.assignment.findMany({
-    where: { dueDate: { gte: now, lte: cutoff } },
+    where: { dueDate: { gte: now, lte: widestCutoff } },
     include: { course: { include: { user: true } } },
   });
 
-  // Skip assignment/user pairs already alerted (AlertLog dedupe).
+  // Skip assignment/user pairs already alerted (AlertLog dedupe), users who
+  // opted out, and assignments outside that user's own lead-time window.
   const alreadyAlerted = new Set(
     (
       await prisma.alertLog.findMany({
@@ -22,9 +34,13 @@ export async function GET() {
     ).map((log) => `${log.assignmentId}:${log.userId}`)
   );
 
-  const pending = dueSoon.filter(
-    (a) => !alreadyAlerted.has(`${a.id}:${a.course.userId}`)
-  );
+  const pending = dueSoon.filter((a) => {
+    const user = a.course.user;
+    if (!user.alertsEnabled) return false;
+    if (alreadyAlerted.has(`${a.id}:${user.id}`)) return false;
+    const userCutoff = now.getTime() + user.alertLeadHours * 60 * 60 * 1000;
+    return a.dueDate!.getTime() <= userCutoff;
+  });
 
   // Group into one summary email per user rather than one per assignment.
   const byUser = new Map<string, { email: string; name: string | null; assignments: typeof pending }>();
