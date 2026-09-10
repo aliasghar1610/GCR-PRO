@@ -1,42 +1,47 @@
-import Link from "next/link";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { SolverForm } from "./SolverForm";
+import { SolverClient } from "./SolverClient";
 
-export default async function SolverPage() {
+export default async function SolverPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ assignmentId?: string; documentId?: string }>;
+}) {
+  const { assignmentId, documentId } = await searchParams;
   const session = await getServerSession(authOptions);
-  const userId = session?.user?.id;
+  const userId = session!.user.id;
 
-  if (!userId) {
-    return (
-      <main className="p-8">
-        <p>
-          Please <Link href="/" className="underline">sign in</Link> first.
-        </p>
-      </main>
-    );
-  }
-
-  const assignments = await prisma.assignment.findMany({
-    where: { course: { userId } },
-    include: { course: true },
-    orderBy: { title: "asc" },
-  });
+  const [assignments, documents, user] = await Promise.all([
+    prisma.assignment.findMany({
+      where: { course: { userId } },
+      include: { course: true },
+      orderBy: { title: "asc" },
+    }),
+    prisma.document.findMany({
+      where: { userId, status: "READY" },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, filename: true, wordCount: true, pageCount: true },
+    }),
+    prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { name: true, rollNumber: true } }),
+  ]);
 
   return (
-    <main className="p-8 flex flex-col gap-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-xl font-semibold">AI Study Aid</h1>
-        <Link href="/dashboard" className="text-sm underline">Back to dashboard</Link>
-      </div>
-      <SolverForm
-        assignments={assignments.map((a) => ({
-          id: a.id,
-          title: a.title,
-          courseName: a.course.name,
-        }))}
-      />
-    </main>
+    <SolverClient
+      profileName={user.name ?? ""}
+      profileRollNumber={user.rollNumber ?? ""}
+      assignments={assignments.map((a) => ({
+        id: a.id,
+        title: a.title,
+        description: a.description,
+        dueDateISO: a.dueDate ? a.dueDate.toISOString() : null,
+        courseId: a.course.id,
+        courseName: a.course.name,
+        driveFileIds: a.driveFileIds,
+      }))}
+      documents={documents}
+      initialAssignmentId={assignmentId}
+      initialDocumentId={documentId}
+    />
   );
 }

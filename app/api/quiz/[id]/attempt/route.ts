@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
+import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+
+const bodySchema = z.object({
+  answers: z.record(z.string().max(200), z.string().max(2000)).default({}),
+});
 
 export async function POST(
   req: Request,
@@ -14,8 +19,12 @@ export async function POST(
   }
 
   const { id: quizId } = await params;
-  const body = await req.json().catch(() => null);
-  const answers: Record<string, string> = body?.answers ?? {};
+  const rawBody = await req.json().catch(() => null);
+  const parsed = bodySchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+  const { answers } = parsed.data;
 
   const quiz = await prisma.quiz.findFirst({
     where: { id: quizId, userId },
@@ -25,13 +34,20 @@ export async function POST(
     return NextResponse.json({ error: "Quiz not found" }, { status: 404 });
   }
 
+  // Only accept answers keyed by this quiz's own question ids — anything else
+  // is dropped rather than trusted.
+  const knownQuestionIds = new Set(quiz.questions.map((q) => q.id));
+  const safeAnswers = Object.fromEntries(
+    Object.entries(answers).filter(([questionId]) => knownQuestionIds.has(questionId))
+  );
+
   let score = 0;
   for (const q of quiz.questions) {
-    if (answers[q.id] === q.correctAnswer) score++;
+    if (safeAnswers[q.id] === q.correctAnswer) score++;
   }
 
   await prisma.quizAttempt.create({
-    data: { quizId, userId, score, answers },
+    data: { quizId, userId, score, answers: safeAnswers },
   });
 
   return NextResponse.json({

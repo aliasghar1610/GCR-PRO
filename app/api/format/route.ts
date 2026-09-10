@@ -4,9 +4,19 @@ import path from "node:path";
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
 import { getServerSession } from "next-auth";
+import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 
 const TEMPLATE_PATH = path.join(process.cwd(), "templates", "assignment.docx");
+
+const bodySchema = z.object({
+  studentName: z.string().max(200).optional(),
+  rollNumber: z.string().max(100).optional(),
+  subject: z.string().max(200).optional(),
+  courseName: z.string().max(200).optional(),
+  title: z.string().min(1).max(300),
+  body: z.string().min(1).max(60_000),
+});
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
@@ -14,17 +24,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   }
 
-  const requestBody = await req.json().catch(() => null);
-  const studentName: string | undefined = requestBody?.studentName;
-  const rollNumber: string | undefined = requestBody?.rollNumber;
-  const subject: string | undefined = requestBody?.subject;
-  const courseName: string | undefined = requestBody?.courseName;
-  const title: string | undefined = requestBody?.title;
-  const content: string | undefined = requestBody?.body;
-
-  if (!title || !content) {
-    return NextResponse.json({ error: "title and body are required" }, { status: 400 });
+  const rawBody = await req.json().catch(() => null);
+  const parsed = bodySchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: parsed.error.issues[0]?.message ?? "Invalid request body" },
+      { status: 400 }
+    );
   }
+  const { studentName, rollNumber, subject, courseName, title, body: content } = parsed.data;
 
   const templateContent = fs.readFileSync(TEMPLATE_PATH, "binary");
   const zip = new PizZip(templateContent);
