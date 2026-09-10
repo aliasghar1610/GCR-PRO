@@ -1,9 +1,17 @@
 import { NextResponse } from "next/server";
 import { google } from "googleapis";
 import { getServerSession } from "next-auth";
+import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { getGoogleAuthClient } from "@/lib/google-auth";
 import { askGemini } from "@/lib/ai";
+
+const bodySchema = z.object({
+  recipientName: z.string().max(200).optional(),
+  recipientEmail: z.string().email().max(320),
+  topic: z.string().min(1).max(2000),
+  tone: z.string().max(200).optional(),
+});
 
 const SYSTEM_PROMPT = `You write polite, well-structured, concise emails from a student to their \
 professor. Given a recipient name, a topic, and a tone, write ONLY the email body — no subject \
@@ -33,18 +41,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   }
 
-  const body = await req.json().catch(() => null);
-  const recipientName: string | undefined = body?.recipientName;
-  const recipientEmail: string | undefined = body?.recipientEmail;
-  const topic: string | undefined = body?.topic;
-  const tone: string | undefined = body?.tone;
-
-  if (!recipientEmail || !topic) {
+  const rawBody = await req.json().catch(() => null);
+  const parsed = bodySchema.safeParse(rawBody);
+  if (!parsed.success) {
     return NextResponse.json(
-      { error: "recipientEmail and topic are required" },
+      { error: parsed.error.issues[0]?.message ?? "Invalid request body" },
       { status: 400 }
     );
   }
+  const { recipientName, recipientEmail, topic, tone } = parsed.data;
 
   const userContent = `Recipient: ${recipientName ?? "Professor"}\nTopic: ${topic}\nTone: ${
     tone ?? "polite and professional"
