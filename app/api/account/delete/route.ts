@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { decryptToken } from "@/lib/tokenCrypto";
 
 // Required by Google's Limited Use policy and the Chrome Web Store — the
 // single most commonly missed pre-launch requirement (6.9.2). The schema has
@@ -37,7 +38,8 @@ export async function POST() {
   // Best-effort — a failed revoke shouldn't block the user from deleting
   // their own data. Revoking the refresh token invalidates the access token
   // that was issued from it too.
-  const tokenToRevoke = user.refreshToken ?? user.accessToken;
+  const stored = user.refreshToken ?? user.accessToken;
+  const tokenToRevoke = stored ? decryptToken(stored) : null;
   if (tokenToRevoke) {
     try {
       await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(tokenToRevoke)}`, {

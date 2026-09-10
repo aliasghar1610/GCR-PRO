@@ -1,6 +1,8 @@
+import "server-only";
 import type { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import { prisma } from "@/lib/prisma";
+import { encryptOptionalToken } from "@/lib/tokenCrypto";
 
 // Do not widen without updating the OAuth consent screen. Every scope here must
 // back a shipped feature (Phase 6.5 audit):
@@ -25,6 +27,11 @@ const SCOPES = [
 ].join(" ");
 
 export const authOptions: NextAuthOptions = {
+  // Stated explicitly rather than inherited: sessions expire, they don't live
+  // forever. NextAuth's cookie is httpOnly + sameSite=lax by default and gains
+  // the __Secure- prefix (secure: true) automatically when NEXTAUTH_URL is
+  // https, which it must be in production.
+  session: { strategy: "jwt", maxAge: 30 * 24 * 60 * 60 },
   // Our sign-in UI lives at "/" (see app/page.tsx) — route both the sign-in
   // entry point and OAuth failures back there instead of NextAuth's default
   // built-in pages, so a cancelled/failed Google login lands on our own
@@ -56,15 +63,15 @@ export const authOptions: NextAuthOptions = {
           update: {
             name: profile.name ?? undefined,
             image: (profile as { picture?: string }).picture ?? undefined,
-            accessToken: account.access_token ?? undefined,
-            refreshToken: account.refresh_token ?? undefined,
+            accessToken: encryptOptionalToken(account.access_token),
+            refreshToken: encryptOptionalToken(account.refresh_token),
           },
           create: {
             email: profile.email,
             name: profile.name ?? null,
             image: (profile as { picture?: string }).picture ?? null,
-            accessToken: account.access_token ?? null,
-            refreshToken: account.refresh_token ?? null,
+            accessToken: encryptOptionalToken(account.access_token) ?? null,
+            refreshToken: encryptOptionalToken(account.refresh_token) ?? null,
           },
         });
         token.userId = user.id;

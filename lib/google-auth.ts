@@ -1,6 +1,8 @@
+import "server-only";
 import { google } from "googleapis";
 import type { OAuth2Client } from "google-auth-library";
 import { prisma } from "@/lib/prisma";
+import { decryptToken, encryptOptionalToken } from "@/lib/tokenCrypto";
 
 /** Thrown when Google access can't be refreshed and the user must sign in again (6.6). */
 export class ReauthRequiredError extends Error {
@@ -60,22 +62,31 @@ export async function getGoogleAuthClient(userId: string): Promise<OAuth2Client>
     throw new ReauthRequiredError();
   }
 
+  // Stored encrypted (lib/tokenCrypto.ts). A null here means the ciphertext
+  // failed authentication — wrong key or a tampered row — which is not
+  // something a retry fixes, so send the user back through consent.
+  const accessToken = decryptToken(user.accessToken);
+  const refreshToken = decryptToken(user.refreshToken);
+  if (!accessToken || !refreshToken) {
+    throw new ReauthRequiredError();
+  }
+
   const oauth2Client = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET
   );
 
   oauth2Client.setCredentials({
-    access_token: user.accessToken,
-    refresh_token: user.refreshToken,
+    access_token: accessToken,
+    refresh_token: refreshToken,
   });
 
   oauth2Client.on("tokens", (tokens) => {
     void prisma.user.update({
       where: { id: userId },
       data: {
-        accessToken: tokens.access_token ?? undefined,
-        refreshToken: tokens.refresh_token ?? undefined,
+        accessToken: encryptOptionalToken(tokens.access_token),
+        refreshToken: encryptOptionalToken(tokens.refresh_token),
       },
     });
   });

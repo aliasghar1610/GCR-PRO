@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { decryptToken } from "@/lib/tokenCrypto";
 
 // Clears stored Google tokens without deleting the account or its synced
 // data — Classroom/Gmail features stop working until the user signs in
@@ -18,7 +19,8 @@ export async function POST() {
     return NextResponse.json({ error: "Account not found" }, { status: 404 });
   }
 
-  const tokenToRevoke = user.refreshToken ?? user.accessToken;
+  const stored = user.refreshToken ?? user.accessToken;
+  const tokenToRevoke = stored ? decryptToken(stored) : null;
   if (tokenToRevoke) {
     try {
       await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(tokenToRevoke)}`, {
