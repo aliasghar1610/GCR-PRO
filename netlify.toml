@@ -7,7 +7,8 @@
   publish = ".next"
 
 [build.environment]
-  NODE_VERSION = "20"
+  # Next 16 / React 19 want a recent runtime; 22 is the current LTS.
+  NODE_VERSION = "22"
 
 # Netlify's Next.js runtime handles routing, SSR and the proxy/middleware layer.
 [[plugins]]
