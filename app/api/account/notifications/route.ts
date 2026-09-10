@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
 const bodySchema = z.object({
   alertsEnabled: z.boolean().optional(),
   alertLeadHours: z.number().int().min(1).max(336).optional(), // up to 14 days
-});
+}).strict();
 
 export async function PATCH(req: Request) {
   const session = await getServerSession(authOptions);

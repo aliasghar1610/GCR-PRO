@@ -8,7 +8,7 @@ const bodySchema = z.object({
   name: z.string().min(1).max(200).optional(),
   rollNumber: z.string().max(100).nullable().optional(),
   program: z.string().max(200).nullable().optional(),
-});
+}).strict();
 
 export async function PATCH(req: Request) {
   const session = await getServerSession(authOptions);

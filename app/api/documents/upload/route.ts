@@ -8,20 +8,30 @@ import {
   MAX_UPLOAD_BYTES,
   MAX_EXTRACTED_CHARS,
   parseDocument,
+  sniffMimeType,
 } from "@/lib/documentParse";
 import { truncate } from "@/lib/text";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rateLimit";
+
+const RATE_LIMIT = 30;
+const RATE_WINDOW_MS = 60 * 60 * 1000;
 
 const metaSchema = z.object({
   filename: z.string().min(1).max(300),
   mimeType: z.enum(ACCEPTED_MIME_TYPES),
   size: z.number().int().positive().max(MAX_UPLOAD_BYTES),
-});
+}).strict();
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   const userId = session?.user?.id;
   if (!userId) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  }
+
+  const limit = await checkRateLimit(userId, "document-upload", RATE_LIMIT, RATE_WINDOW_MS);
+  if (!limit.allowed) {
+    return rateLimitResponse("document uploads", limit.resetAt);
   }
 
   const contentLength = Number(req.headers.get("content-length") ?? "0");
@@ -55,19 +65,37 @@ export async function POST(req: Request) {
     return NextResponse.json({ document: doc }, { status: 201 });
   }
 
+  // The declared Content-Type got us this far; the file's own leading bytes
+  // decide what actually gets parsed. A .docx renamed to .pdf (or a client
+  // simply lying about the type) is rejected here rather than handed to a
+  // parser that wasn't built for it.
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const sniffed = sniffMimeType(buffer);
+  if (!sniffed || sniffed !== meta.data.mimeType) {
+    const doc = await prisma.document.create({
+      data: {
+        userId,
+        filename: meta.data.filename,
+        mimeType: meta.data.mimeType,
+        size: meta.data.size,
+        status: "UNSUPPORTED",
+      },
+    });
+    return NextResponse.json({ document: doc }, { status: 201 });
+  }
+
   const doc = await prisma.document.create({
     data: {
       userId,
       filename: meta.data.filename,
-      mimeType: meta.data.mimeType,
+      mimeType: sniffed,
       size: meta.data.size,
       status: "PARSING",
     },
   });
 
   try {
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const parsed = await parseDocument(buffer, meta.data.mimeType);
+    const parsed = await parseDocument(buffer, sniffed);
     const updated = await prisma.document.update({
       where: { id: doc.id },
       data: {

@@ -4,7 +4,7 @@ import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { askGemini } from "@/lib/ai";
-import { checkRateLimit } from "@/lib/rateLimit";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rateLimit";
 import { truncate } from "@/lib/text";
 
 // Deliberately asks for a structured study aid, not a final answer to turn
@@ -38,6 +38,7 @@ const bodySchema = z
     documentId: z.string().min(1).max(200).optional(),
     attachmentText: z.string().max(MAX_ATTACHMENT_CHARS).nullable().optional(),
   })
+  .strict()
   .refine((d) => d.assignmentId || d.documentId, {
     message: "assignmentId or documentId is required",
   });
@@ -56,12 +57,9 @@ export async function POST(req: Request) {
   }
   const { assignmentId, documentId, attachmentText } = parsed.data;
 
-  const allowed = await checkRateLimit(userId, "solve", RATE_LIMIT, RATE_WINDOW_MS);
-  if (!allowed) {
-    return NextResponse.json(
-      { error: "You've hit the hourly limit for the study aid tool — try again later." },
-      { status: 429 }
-    );
+  const limit = await checkRateLimit(userId, "solve", RATE_LIMIT, RATE_WINDOW_MS);
+  if (!limit.allowed) {
+    return rateLimitResponse("the study aid tool", limit.resetAt);
   }
 
   let material: string;

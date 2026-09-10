@@ -4,7 +4,7 @@ import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { askGemini } from "@/lib/ai";
-import { checkRateLimit } from "@/lib/rateLimit";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rateLimit";
 import { truncate } from "@/lib/text";
 
 const DIFFICULTY_HINTS = {
@@ -78,6 +78,7 @@ const bodySchema = z
     questionCount: z.number().int().min(3).max(10).optional().default(5),
     difficulty: z.enum(["easy", "medium", "hard"]).optional().default("medium"),
   })
+  .strict()
   .refine((d) => d.assignmentId || d.courseId || d.documentId, {
     message: "assignmentId, courseId, or documentId is required",
   });
@@ -99,12 +100,9 @@ export async function POST(req: Request) {
   }
   const { assignmentId, courseId, documentId, attachmentText, questionCount, difficulty } = parsed.data;
 
-  const allowed = await checkRateLimit(userId, "quiz-generate", RATE_LIMIT, RATE_WINDOW_MS);
-  if (!allowed) {
-    return NextResponse.json(
-      { error: "You've hit the hourly limit for quiz generation — try again later." },
-      { status: 429 }
-    );
+  const limit = await checkRateLimit(userId, "quiz-generate", RATE_LIMIT, RATE_WINDOW_MS);
+  if (!limit.allowed) {
+    return rateLimitResponse("quiz generation", limit.resetAt);
   }
 
   let material = "";

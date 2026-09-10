@@ -6,8 +6,11 @@ import Docxtemplater from "docxtemplater";
 import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rateLimit";
 
 const TEMPLATE_PATH = path.join(process.cwd(), "templates", "assignment.docx");
+const RATE_LIMIT = 30;
+const RATE_WINDOW_MS = 60 * 60 * 1000;
 
 const bodySchema = z.object({
   studentName: z.string().max(200).optional(),
@@ -16,12 +19,18 @@ const bodySchema = z.object({
   courseName: z.string().max(200).optional(),
   title: z.string().min(1).max(300),
   body: z.string().min(1).max(60_000),
-});
+}).strict();
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  const userId = session?.user?.id;
+  if (!userId) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  }
+
+  const limit = await checkRateLimit(userId, "format", RATE_LIMIT, RATE_WINDOW_MS);
+  if (!limit.allowed) {
+    return rateLimitResponse("document formatting", limit.resetAt);
   }
 
   const rawBody = await req.json().catch(() => null);
@@ -34,20 +43,29 @@ export async function POST(req: Request) {
   }
   const { studentName, rollNumber, subject, courseName, title, body: content } = parsed.data;
 
-  const templateContent = fs.readFileSync(TEMPLATE_PATH, "binary");
-  const zip = new PizZip(templateContent);
-  const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
+  // The template is a static file we ship; the request only supplies the data
+  // substituted into its placeholders, never the template or its delimiters.
+  let buffer: Buffer;
+  try {
+    const templateContent = fs.readFileSync(TEMPLATE_PATH, "binary");
+    const zip = new PizZip(templateContent);
+    const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
 
-  doc.render({
-    title,
-    studentName: studentName ?? "",
-    rollNumber: rollNumber ?? "",
-    subject: subject ?? "",
-    courseName: courseName ?? "",
-    bodyParagraphs: content.split("\n").filter((line) => line.trim() !== ""),
-  });
+    doc.render({
+      title,
+      studentName: studentName ?? "",
+      rollNumber: rollNumber ?? "",
+      subject: subject ?? "",
+      courseName: courseName ?? "",
+      bodyParagraphs: content.split("\n").filter((line) => line.trim() !== ""),
+    });
 
-  const buffer: Buffer = doc.getZip().generate({ type: "nodebuffer" });
+    buffer = doc.getZip().generate({ type: "nodebuffer" });
+  } catch (err) {
+    // docxtemplater errors carry template internals — log, don't return.
+    console.error("DOCX render failed:", err);
+    return NextResponse.json({ error: "Could not build the document" }, { status: 500 });
+  }
 
   return new NextResponse(new Uint8Array(buffer), {
     headers: {

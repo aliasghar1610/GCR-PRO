@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 
 const bodySchema = z.object({
   answers: z.record(z.string().max(200), z.string().max(2000)).default({}),
-});
+}).strict();
 
 export async function POST(
   req: Request,
