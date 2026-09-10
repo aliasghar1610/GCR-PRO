@@ -1,0 +1,24 @@
+[build]
+  # `prisma generate` must run before the Next build: the Prisma client is
+  # generated into node_modules, and Netlify's dependency cache can skip the
+  # postinstall hook that would otherwise produce it, leaving the build to fail
+  # on a missing @prisma/client.
+  command = "npx prisma generate && npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# Netlify's Next.js runtime handles routing, SSR and the proxy/middleware layer.
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+# Deadline alerts. /api/alerts/check iterates due assignments and emails each
+# user; it authenticates the caller with CRON_SECRET, so this schedule only
+# works once that variable is set in the Netlify UI.
+#
+# Netlify scheduled functions cannot send an Authorization header directly, so
+# this is left commented out until a small scheduled function wrapper exists.
+# See README "Deadline alerts" before enabling.
+# [functions."alerts-cron"]
+#   schedule = "0 * * * *"
