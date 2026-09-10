@@ -8,14 +8,20 @@ datasource db {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  name         String?
-  image        String?
-  accessToken  String? // Google OAuth token, for API calls
-  refreshToken String?
-  createdAt    DateTime @default(now())
-  courses      Course[]
+  id                     String    @id @default(cuid())
+  email                  String    @unique
+  name                   String?
+  image                  String?
+  accessToken            String? // Google OAuth token, for API calls
+  refreshToken           String?
+  extensionTokenHash     String? // sha256 of the current extension bearer token; clearing/rotating revokes it
+  extensionTokenIssuedAt DateTime?
+  rollNumber             String? // student-editable; used by /api/format's cover page
+  program                String? // student-editable; used by /api/format's cover page
+  alertsEnabled          Boolean   @default(true) // deadline-alert opt-out (Settings > Notifications)
+  alertLeadHours         Int       @default(48) // how far ahead of a due date to alert
+  createdAt              DateTime  @default(now())
+  courses                Course[]
 }
 
 model Course {
@@ -40,6 +46,7 @@ model Assignment {
   title         String
   description   String?
   dueDate       DateTime?
+  maxPoints     Float? // courseWork.maxPoints from Classroom — needed to turn assignedGrade into a percentage
   state         String? // PUBLISHED, DRAFT, etc.
   alternateLink String?
   driveFileIds  String[] // Drive file IDs from coursework materials, if any
@@ -109,6 +116,31 @@ model QuizAttempt {
   score   Int
   answers Json // student's chosen answers
   takenAt DateTime @default(now())
+}
+
+// Sliding-window call counter for per-user AI rate limiting (6.4.4).
+model ApiUsage {
+  id        String   @id @default(cuid())
+  userId    String
+  route     String
+  createdAt DateTime @default(now())
+
+  @@index([userId, route, createdAt])
+}
+
+model Document {
+  id            String   @id @default(cuid())
+  userId        String // no @relation, same as Quiz/Submission/etc. — sidesteps FK cascade handling on account delete
+  filename      String
+  mimeType      String
+  size          Int // bytes
+  status        String // QUEUED, PARSING, READY, UNSUPPORTED, FAILED
+  extractedText String? // capped length — see lib/documentParse.ts
+  wordCount     Int?
+  pageCount     Int?
+  createdAt     DateTime @default(now())
+
+  @@index([userId])
 }
 
 model Announcement {
