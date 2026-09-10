@@ -1,15 +1,27 @@
 import { NextResponse } from "next/server";
+import { timingSafeEqual } from "node:crypto";
 import { Resend } from "resend";
 import { prisma } from "@/lib/prisma";
+import { escapeHtml } from "@/lib/text";
 
 const MAX_LEAD_HOURS = 24 * 14; // widest per-user window we'll ever honor
+
+/** Constant-time compare so the secret can't be recovered byte-by-byte. */
+function secretMatches(provided: string | null, expected: string): boolean {
+  if (!provided) return false;
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  // timingSafeEqual throws on length mismatch, which would itself leak length.
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
 
 export async function GET(req: Request) {
   // This iterates every user's due assignments and sends email — it's meant
   // to be called by a cron trigger, not left open to the public internet.
   const cronSecret = process.env.CRON_SECRET;
   const authHeader = req.headers.get("authorization");
-  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+  if (!cronSecret || !secretMatches(authHeader, `Bearer ${cronSecret}`)) {
     return NextResponse.json({ error: "Not authorized" }, { status: 401 });
   }
 
@@ -59,15 +71,12 @@ export async function GET(req: Request) {
 
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
+    // Deliberately reports only a count. Echoing the pending recipients here
+    // would put real addresses and assignment titles into cron logs.
+    console.error("RESEND_API_KEY is not set — deadline alerts were not sent.");
     return NextResponse.json(
-      {
-        error: "RESEND_API_KEY is not set — no emails sent.",
-        wouldAlert: Array.from(byUser.values()).map((u) => ({
-          email: u.email,
-          assignments: u.assignments.map((a) => a.title),
-        })),
-      },
-      { status: 200 }
+      { error: "Email is not configured — no alerts sent.", pendingUsers: byUser.size },
+      { status: 500 }
     );
   }
 
@@ -78,10 +87,14 @@ export async function GET(req: Request) {
   let assignmentsAlerted = 0;
 
   for (const [userId, { email, name, assignments }] of byUser) {
+    // Titles and course names come from Classroom, i.e. from whoever set up
+    // the course — encode them rather than trusting them as markup.
     const listHtml = assignments
       .map(
         (a) =>
-          `<li><strong>${a.title}</strong> (${a.course.name}) — due ${a.dueDate!.toLocaleString()}</li>`
+          `<li><strong>${escapeHtml(a.title)}</strong> (${escapeHtml(a.course.name)}) — due ${escapeHtml(
+            a.dueDate!.toLocaleString()
+          )}</li>`
       )
       .join("");
 
@@ -89,7 +102,7 @@ export async function GET(req: Request) {
       from: fromAddress,
       to: email,
       subject: `${assignments.length} assignment${assignments.length === 1 ? "" : "s"} due within 48 hours`,
-      html: `<p>Hi ${name ?? "there"},</p><p>These are coming up soon:</p><ul>${listHtml}</ul>`,
+      html: `<p>Hi ${escapeHtml(name ?? "there")},</p><p>These are coming up soon:</p><ul>${listHtml}</ul>`,
     });
 
     if (error) {
