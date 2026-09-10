@@ -1,3 +1,4 @@
+import "server-only";
 import { SignJWT, jwtVerify } from "jose";
 import { createHash } from "node:crypto";
 import { getServerSession } from "next-auth";
@@ -5,9 +6,21 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 const TOKEN_TTL = "30d";
+const ALGORITHM = "HS256";
 
+/**
+ * Deliberately NOT NEXTAUTH_SECRET. These are two different credential
+ * systems with different lifetimes and blast radii — a leaked extension key
+ * must not also forge web sessions, and vice versa.
+ */
 function secretKey() {
-  return new TextEncoder().encode(process.env.NEXTAUTH_SECRET);
+  const secret = process.env.EXTENSION_JWT_SECRET;
+  if (!secret || secret.length < 32) {
+    throw new Error(
+      "EXTENSION_JWT_SECRET must be set to at least 32 characters (openssl rand -base64 32)"
+    );
+  }
+  return new TextEncoder().encode(secret);
 }
 
 function hashToken(token: string): string {
@@ -22,7 +35,7 @@ function hashToken(token: string): string {
  */
 export async function issueExtensionToken(userId: string): Promise<string> {
   const token = await new SignJWT({})
-    .setProtectedHeader({ alg: "HS256" })
+    .setProtectedHeader({ alg: ALGORITHM })
     .setSubject(userId)
     .setIssuedAt()
     .setExpirationTime(TOKEN_TTL)
@@ -38,7 +51,9 @@ export async function issueExtensionToken(userId: string): Promise<string> {
 
 /** Clears the stored hash so any outstanding extension token stops working. */
 export async function revokeExtensionToken(userId: string): Promise<void> {
-  await prisma.user.update({
+  // updateMany, not update: a stale session whose User row is already gone
+  // would make update() throw P2025 instead of quietly affecting no rows.
+  await prisma.user.updateMany({
     where: { id: userId },
     data: { extensionTokenHash: null, extensionTokenIssuedAt: null },
   });
@@ -47,14 +62,20 @@ export async function revokeExtensionToken(userId: string): Promise<void> {
 async function verifyExtensionToken(token: string): Promise<string | null> {
   let userId: string | undefined;
   try {
-    const { payload } = await jwtVerify(token, secretKey());
+    // `algorithms` pins verification to the one algorithm we issue with, so a
+    // token whose header advertises anything else is rejected before the
+    // signature is even considered.
+    const { payload } = await jwtVerify(token, secretKey(), { algorithms: [ALGORITHM] });
     if (typeof payload.sub !== "string") return null;
     userId = payload.sub;
   } catch {
-    return null; // expired, malformed, or bad signature
+    return null; // expired, malformed, wrong alg, or bad signature
   }
 
-  const user = await prisma.user.findUnique({ where: { id: userId } });
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { extensionTokenHash: true },
+  });
   if (!user?.extensionTokenHash || user.extensionTokenHash !== hashToken(token)) {
     return null; // revoked or superseded by a newer token
   }

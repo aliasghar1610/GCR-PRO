@@ -28,7 +28,22 @@ export default async function SettingsPage({
   const session = await getServerSession(authOptions);
   const userId = session!.user.id;
 
-  const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+  // Explicit select: never pull the whole User row into a component tree.
+  // accessToken/refreshToken/extensionTokenHash are reduced to booleans here so
+  // there is no way for a stored credential to end up in the RSC payload.
+  const user = await prisma.user.findUniqueOrThrow({
+    where: { id: userId },
+    select: {
+      name: true,
+      email: true,
+      rollNumber: true,
+      program: true,
+      alertsEnabled: true,
+      alertLeadHours: true,
+      accessToken: true,
+      extensionTokenHash: true,
+    },
+  });
   const latestCourse = await prisma.course.findFirst({
     where: { userId },
     orderBy: { syncedAt: "desc" },
@@ -77,6 +92,7 @@ export default async function SettingsPage({
           {activeTab === "connected" && (
             <ConnectedAccountTab
               connected={!!user.accessToken}
+              extensionConnected={!!user.extensionTokenHash}
               lastSyncedAt={latestCourse?.syncedAt.toISOString() ?? null}
             />
           )}

@@ -7,12 +7,24 @@
 // chrome.storage.local and sent as `Authorization: Bearer <token>` on every
 // backend call.
 
-// Phase 7 (deployment) must update this to the production origin.
+// The single source of truth for which backend this build talks to. Must match
+// the origins in manifest.json (host_permissions + externally_connectable) and
+// be an https:// production origin before the extension is published.
 const API_BASE = "http://localhost:3000";
 
+// Only these origins may hand this extension a bearer token. Chrome already
+// gates onMessageExternal by manifest externally_connectable, but that list is
+// easy to widen by accident, so the check is repeated here against the one
+// origin we actually trust.
+const TRUSTED_ORIGINS = [API_BASE];
+
 // --- Auth handoff from the web app (externally_connectable, spec 5.5) -----
-chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) => {
-  if (message?.type !== "GCR_TOKEN" || !message.token) return;
+chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
+  if (!TRUSTED_ORIGINS.includes(sender.origin)) {
+    sendResponse({ ok: false, error: "Untrusted origin" });
+    return; // never accept a token from a page we don't control
+  }
+  if (message?.type !== "GCR_TOKEN" || typeof message.token !== "string") return;
 
   chrome.storage.local.set(
     { token: message.token, theme: message.theme ?? "system" },

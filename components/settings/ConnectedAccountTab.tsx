@@ -22,15 +22,32 @@ const SCOPES = [
 export function ConnectedAccountTab({
   connected,
   lastSyncedAt,
+  extensionConnected,
 }: {
   connected: boolean;
   lastSyncedAt: string | null;
+  extensionConnected: boolean;
 }) {
   const router = useRouter();
   const toast = useToast();
   const [syncing, setSyncing] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [revoking, setRevoking] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+
+  async function handleRevokeExtension() {
+    setRevoking(true);
+    try {
+      const res = await fetch("/api/extension/token", { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      toast("Extension disconnected");
+      router.refresh();
+    } catch {
+      toast("Failed to disconnect the extension", "error");
+    } finally {
+      setRevoking(false);
+    }
+  }
 
   async function handleResync() {
     setSyncing(true);
@@ -93,6 +110,24 @@ export function ConnectedAccountTab({
       <p className="text-sm text-text-muted">
         {lastSyncedAt ? `Last synced ${relativeTime(lastSyncedAt)}` : "Never synced yet"}
       </p>
+
+      {extensionConnected && (
+        <div className="rounded-md border border-border px-3.5 py-3 flex flex-col gap-2">
+          <p className="text-sm font-medium text-text-primary">Browser extension</p>
+          <p className="text-sm text-text-muted">
+            The GCR PRO extension is connected to this account. Revoking signs it out
+            everywhere it&rsquo;s installed.
+          </p>
+          <button
+            onClick={handleRevokeExtension}
+            disabled={revoking}
+            className="self-start inline-flex items-center gap-1.5 rounded-md border border-danger/30 px-3.5 py-1.5 text-sm font-medium text-danger hover:bg-danger-soft transition-colors disabled:opacity-60"
+          >
+            {revoking && <Loader2 className="size-3.5 animate-spin" />}
+            Disconnect extension
+          </button>
+        </div>
+      )}
 
       <div className="flex gap-2">
         <button
