@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Mail, Send, RotateCcw, Copy, CheckCircle2, ExternalLink, Loader2 } from "lucide-react";
+import { Mail, Send, RotateCcw, Copy, ExternalLink, Loader2 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
@@ -31,19 +31,26 @@ export function EmailWriterClient({
   const [tone, setTone] = useState<ToneKey>("polite");
   const [loading, setLoading] = useState(false);
   const [draft, setDraft] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [subject, setSubject] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
 
   const professor = professors.find((p) => p.googleId === googleId) ?? null;
+
+  // Opens Gmail's own compose window with the fields pre-filled. This is a
+  // plain link, not an API call — the app is never granted access to anyone's
+  // mailbox, and the user sees and sends the message themselves.
+  const composeUrl =
+    draft && professor?.email
+      ? `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(
+          professor.email
+        )}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(draft)}`
+      : null;
 
   async function handleGenerate() {
     if (!professor?.email) return;
     setLoading(true);
     setError(null);
-    setSaveError(null);
     setDraft(null);
-    setSaved(false);
     try {
       const res = await fetch("/api/email/draft", {
         method: "POST",
@@ -58,12 +65,7 @@ export function EmailWriterClient({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Request failed");
       setDraft(data.draft);
-      if (data.gmailDraftId) {
-        setSaved(true);
-        toast("Saved to Gmail Drafts");
-      } else if (data.error) {
-        setSaveError(data.error);
-      }
+      setSubject(data.subject ?? `Re: ${topic}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Request failed");
     } finally {
@@ -96,7 +98,7 @@ export function EmailWriterClient({
       <div>
         <h1 className="text-2xl font-semibold text-text-primary">Email Writer</h1>
         <p className="text-sm text-text-muted mt-0.5">
-          Draft a message to an instructor and save it straight to Gmail Drafts.
+          Draft a message to an instructor, then open it in Gmail ready to send.
         </p>
       </div>
 
@@ -148,7 +150,7 @@ export function EmailWriterClient({
             className="inline-flex items-center justify-center gap-2 rounded-md bg-accent px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-hover transition-colors disabled:opacity-60"
           >
             {loading ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
-            {loading ? "Drafting…" : draft ? "Regenerate & Save to Gmail Drafts" : "Save to Gmail Drafts"}
+            {loading ? "Drafting…" : draft ? "Regenerate draft" : "Write draft"}
           </button>
           {error && <p className="text-sm text-danger">{error}</p>}
         </Card>
@@ -161,7 +163,7 @@ export function EmailWriterClient({
               </p>
               <p className="text-xs text-text-muted">
                 <span className="font-medium text-text-body">Subject:</span>{" "}
-                {topic.trim() ? `Re: ${topic}` : "—"}
+                {subject || (topic.trim() ? `Re: ${topic}` : "—")}
               </p>
             </div>
             <div className="p-5 min-h-[16rem]">
@@ -176,7 +178,17 @@ export function EmailWriterClient({
           </Card>
 
           {draft && (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {composeUrl && (
+                <a
+                  href={composeUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3.5 py-2 text-sm font-medium text-white hover:bg-accent-hover transition-colors"
+                >
+                  Open in Gmail <ExternalLink className="size-3.5" />
+                </a>
+              )}
               <button
                 onClick={handleGenerate}
                 className="inline-flex items-center gap-1.5 rounded-md border border-border-strong px-3 py-2 text-sm font-medium text-text-body hover:bg-bg-subtle transition-colors"
@@ -192,24 +204,11 @@ export function EmailWriterClient({
             </div>
           )}
 
-          {saved && (
-            <div className="flex items-center gap-2.5 rounded-md bg-success-soft px-3.5 py-2.5 text-sm text-success">
-              <CheckCircle2 className="size-4 shrink-0" />
-              Saved to Gmail Drafts — review and send it yourself.
-              <a
-                href="https://mail.google.com/mail/u/0/#drafts"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="ml-auto inline-flex items-center gap-1 font-medium hover:underline shrink-0"
-              >
-                Open Gmail <ExternalLink className="size-3.5" />
-              </a>
-            </div>
-          )}
-          {saveError && (
-            <div className="rounded-md bg-warning-soft px-3.5 py-2.5 text-sm text-warning">
-              {saveError}
-            </div>
+          {draft && (
+            <p className="text-sm text-text-muted leading-relaxed">
+              GCR PRO has no access to your mail. &ldquo;Open in Gmail&rdquo; opens a compose
+              window with these fields filled in — nothing is sent until you send it.
+            </p>
           )}
         </div>
       </div>

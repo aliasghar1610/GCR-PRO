@@ -130,8 +130,8 @@ with proposed fixes below — one needs a decision before it can be done safely.
 - **Fix applied:** new `escapeHtml` in `lib/text.ts`, applied to every
   interpolated value in the message.
 
-### [MEDIUM] Email header injection via the draft subject
-- **Location:** `app/api/email/draft/route.ts` (`toRawMessage`)
+### [MEDIUM] Email header injection via the draft subject — later removed entirely
+- **Location:** `app/api/email/draft/route.ts` (`toRawMessage`, since deleted)
 - **Category:** Injection (OWASP A03)
 - **What's wrong:** `Subject: Re: ${topic}` placed up-to-2000 chars of user input,
   newlines included, straight into an RFC 5322 header block.
@@ -139,7 +139,10 @@ with proposed fixes below — one needs a decision before it can be done safely.
   choosing (`Bcc:`, `Reply-To:`) to the drafted message, or terminates the
   header block early to control the body.
 - **Fix applied:** `sanitizeHeaderValue` strips CR/LF from both `To` and
-  `Subject`, and the subject is RFC 2047 base64-encoded.
+  `Subject`, and the subject was RFC 2047 base64-encoded. Subsequently the whole
+  Gmail path was removed (see "Scope reduction" below), so no mail headers are
+  constructed at all any more. `sanitizeHeaderValue` is still applied to the
+  subject the API returns, since it ends up in a URL.
 
 ### [MEDIUM] Email drafts could be addressed to any recipient
 - **Location:** `app/api/email/draft/route.ts`
@@ -147,11 +150,12 @@ with proposed fixes below — one needs a decision before it can be done safely.
 - **What's wrong:** `recipientEmail` was accepted as any valid address, contrary
   to spec §12 ("recipient addresses come from the authenticated user's own
   record").
-- **Realistic impact:** bounded — the result is a *draft* in the caller's own
-  mailbox, not a send, so this is not an open relay. But it let the app's Gemini
-  budget and the user's Gmail account be driven toward arbitrary third parties.
+- **Realistic impact:** bounded — the result was a *draft*, never a send, so
+  this was not an open relay. But it turned the endpoint into a
+  "write a personalised email to any address" service running on our AI budget.
 - **Fix applied:** the recipient must match a `Teacher` on one of the caller's
-  own courses, or the request is refused with 403.
+  own courses, or the request is refused with 403. Still enforced after the
+  Gmail removal, since the abuse and cost argument is unchanged.
 
 ### [MEDIUM] Upload MIME type trusted from the client
 - **Location:** `app/api/documents/upload/route.ts`, `lib/documentParse.ts`
@@ -313,9 +317,11 @@ These were checked against the code and needed no change:
 - **No SSRF.** Nothing fetches a user-supplied URL. Drive bytes are fetched by
   the *browser* with a short-lived `drive.file` token and posted to us for
   parsing; the server holds no Drive-wide credential.
-- **OAuth scopes are minimal** and each is tied to a shipped feature; the
-  restricted `drive.readonly` scope is deliberately avoided. PKCE and `state`
-  are NextAuth defaults and are not disabled.
+- **OAuth scopes are minimal, read-only, and contain no restricted scope.**
+  Each is tied to a shipped feature. Both restricted scopes the app might
+  plausibly have wanted are deliberately avoided: `drive.readonly` (replaced by
+  a per-file Picker flow) and `gmail.compose` (removed — see below). PKCE and
+  `state` are NextAuth defaults and are not disabled.
 - **Session contents.** The `session` callback exposes only `user.id` — no
   Google tokens reach `useSession()`.
 - **CORS.** `proxy.ts` reflects one exact extension origin, never `*`, and
@@ -337,6 +343,38 @@ These were checked against the code and needed no change:
   messages.
 - **`docxtemplater` template is static** (`templates/assignment.docx`); requests
   supply only the data substituted into placeholders.
+
+---
+
+## Scope reduction: `gmail.compose` removed
+
+Acting on this audit, the Gmail scope was dropped entirely rather than carried
+into production.
+
+**Why it mattered.** `gmail.compose` is a Google *restricted* scope. It let this
+app create messages inside every user's mailbox, which means a compromise of
+this app was also a foothold in their email — the account most people use to
+reset every other password they own. It was the single largest item in the
+app's breach radius, and it existed to support one convenience feature.
+
+**What replaced it.** `/api/email/draft` now returns the generated text to the
+browser and nothing else. The UI hands it to Gmail's own compose URL
+(`mail.google.com/mail/?view=cm`), which opens a pre-filled compose window the
+user reviews and sends themselves. The feature behaves the same from the
+student's side; the app simply never touches the mailbox.
+
+**Knock-on effects, all verified:**
+- The scope is gone from `lib/auth.ts`, so it disappears from the consent screen.
+- The Gmail API client and the hand-rolled RFC 5322 message builder are deleted
+  — which also retires the header-injection surface reported above, since there
+  are no longer any mail headers to inject into.
+- `/privacy`, the login consent panel and Settings → Connected Account were
+  rewritten to match. Settings now also lists, in plain language, what the app
+  *cannot* do — the part users can never verify for themselves.
+
+**Also removes a launch blocker.** Restricted scopes require Google verification
+and can require an independent security assessment for public apps. With no
+restricted scope requested, the app's review path is substantially lighter.
 
 ---
 

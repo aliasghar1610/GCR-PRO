@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
-import { google } from "googleapis";
 import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getGoogleAuthClient } from "@/lib/google-auth";
 import { askGemini } from "@/lib/ai";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rateLimit";
 import { sanitizeHeaderValue } from "@/lib/text";
@@ -23,30 +21,6 @@ const SYSTEM_PROMPT = `You write polite, well-structured, concise emails from a 
 professor. Given a recipient name, a topic, and a tone, write ONLY the email body — no subject \
 line, no placeholder brackets. Address the recipient by the given name. Keep it professional and \
 appropriately brief.`;
-
-function toRawMessage(to: string, subject: string, body: string): string {
-  // Header values are sanitized, not merely interpolated: a newline in
-  // `subject` would otherwise let the caller append arbitrary headers (Bcc,
-  // Reply-To) to the drafted message. RFC 2047-encode the subject so
-  // non-ASCII survives without needing raw bytes in the header.
-  const encodedSubject = `=?utf-8?B?${Buffer.from(sanitizeHeaderValue(subject), "utf8").toString(
-    "base64"
-  )}?=`;
-
-  const message = [
-    `To: ${sanitizeHeaderValue(to)}`,
-    `Subject: ${encodedSubject}`,
-    "Content-Type: text/plain; charset=utf-8",
-    "",
-    body,
-  ].join("\n");
-
-  return Buffer.from(message)
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
@@ -70,9 +44,10 @@ export async function POST(req: Request) {
     return rateLimitResponse("email drafting", limit.resetAt);
   }
 
-  // The recipient must be an instructor on one of this user's own courses.
-  // Without this the endpoint would draft mail to any address the caller
-  // names, using the caller's Gmail account.
+  // The recipient must be an instructor on one of this user's own courses —
+  // otherwise this is a general-purpose "write a personalised email to any
+  // address" endpoint running on our AI budget, which is both a cost problem
+  // and an abuse vector.
   const teacher = await prisma.teacher.findFirst({
     where: { email: recipientEmail, course: { userId } },
     select: { id: true },
@@ -100,26 +75,11 @@ Tone: ${tone ?? "polite and professional"}
     return NextResponse.json({ error: "AI request failed" }, { status: 500 });
   }
 
-  try {
-    const auth = await getGoogleAuthClient(userId);
-    const gmail = google.gmail({ version: "v1", auth });
-    const raw = toRawMessage(recipientEmail, `Re: ${topic}`, draftText);
-
-    const { data } = await gmail.users.drafts.create({
-      userId: "me",
-      requestBody: { message: { raw } },
-    });
-
-    return NextResponse.json({ draft: draftText, gmailDraftId: data.id });
-  } catch (err) {
-    console.error("Saving Gmail draft failed:", err);
-    return NextResponse.json(
-      {
-        draft: draftText,
-        error:
-          "Generated the email but couldn't save it to Gmail drafts (check the gmail.compose scope is granted).",
-      },
-      { status: 200 }
-    );
-  }
+  // The draft is handed back to the browser and never touches the user's
+  // mailbox. Writing it to Gmail would require the `gmail.compose` scope,
+  // which is a Google *restricted* scope: it would let this app create
+  // messages in the user's account and would put every user's mailbox inside
+  // this app's breach radius. The compose-URL handoff in the UI achieves the
+  // same result with no mail access at all.
+  return NextResponse.json({ draft: draftText, subject: `Re: ${sanitizeHeaderValue(topic)}` });
 }

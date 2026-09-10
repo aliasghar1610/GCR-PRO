@@ -16,7 +16,14 @@ const SCOPES = [
   "Read course announcements",
   "View class rosters",
   "Read instructor email addresses and photos",
-  "Create draft emails in Gmail (never sends automatically)",
+];
+
+// Stated as plainly as the granted permissions, because what an app *cannot*
+// do is the part users can never verify for themselves.
+const NOT_GRANTED = [
+  "No access to your Gmail — GCR PRO cannot read, write, or send mail",
+  "No access to your Drive — only files you pick yourself, one at a time",
+  "No ability to change anything in Classroom; every permission is read-only",
 ];
 
 export function ConnectedAccountTab({
@@ -102,6 +109,18 @@ export function ConnectedAccountTab({
           {SCOPES.map((scope) => (
             <li key={scope} className="text-sm text-text-muted">
               · {scope}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div>
+        <p className="text-sm font-medium text-text-body mb-2">Not requested</p>
+        <ul className="flex flex-col gap-1.5">
+          {NOT_GRANTED.map((item) => (
+            <li key={item} className="flex items-start gap-1.5 text-sm text-text-muted">
+              <XCircle className="size-3.5 mt-0.5 shrink-0 text-text-muted" />
+              <span>{item}</span>
             </li>
           ))}
         </ul>

@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { decryptToken } from "@/lib/tokenCrypto";
 
 // Clears stored Google tokens without deleting the account or its synced
-// data — Classroom/Gmail features stop working until the user signs in
+// data — Classroom sync and the AI features stop working until the user signs in
 // again. A full data wipe is /api/account/delete (Settings > Data & Privacy).
 export async function POST() {
   const session = await getServerSession(authOptions);

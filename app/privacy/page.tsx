@@ -22,18 +22,48 @@ const SECTIONS: { title: string; body: React.ReactNode }[] = [
     body: (
       <p>
         Solely to run the features you use: syncing your dashboard, showing grades and deadlines,
-        generating a study aid or quiz from an assignment, and drafting an email to a professor
-        (saved to your Gmail drafts — never sent automatically).
+        generating a study aid or quiz from an assignment, and writing a draft email to a
+        professor.
       </p>
+    ),
+  },
+  {
+    title: "What we deliberately cannot do",
+    body: (
+      <>
+        <p className="mb-2">
+          The permissions this app asks for are every permission it has. It requests no
+          &ldquo;restricted&rdquo; Google scopes, so there are things it is structurally incapable
+          of doing:
+        </p>
+        <ul className="list-disc pl-5 flex flex-col gap-1.5">
+          <li>
+            <strong>It has no access to your email.</strong> The Email Writer generates text and
+            opens Gmail&rsquo;s own compose window with it filled in. GCR PRO cannot read, write,
+            or send mail, and never sees your mailbox.
+          </li>
+          <li>
+            <strong>It has no access to your Drive.</strong> When you attach a Drive file, your
+            browser fetches that one file using a permission scoped to it alone. Our server never
+            holds a credential that can browse your Drive.
+          </li>
+          <li>
+            <strong>It cannot change anything in Classroom.</strong> Every Classroom permission
+            requested is read-only — it cannot submit work, post, or alter your grades.
+          </li>
+        </ul>
+      </>
     ),
   },
   {
     title: "Where it's stored",
     body: (
       <p>
-        In a Postgres database hosted on Supabase. Your Google access/refresh tokens are stored
-        there too, so we can call the Classroom API on your behalf — they are never sent to the
-        Chrome extension or exposed in any client-side code.
+        In a Postgres database hosted on Supabase. Your Google tokens are stored there so we can
+        sync Classroom on your behalf, and they are <strong>encrypted at rest</strong>{" "}
+        (AES-256-GCM) under a key held outside the database, so a copy of the database alone does
+        not yield usable access to your Google account. They are never sent to the Chrome
+        extension and never appear in any client-side code.
       </p>
     ),
   },
@@ -41,12 +71,13 @@ const SECTIONS: { title: string; body: React.ReactNode }[] = [
     title: "Third-party AI processing (Limited Use disclosure)",
     body: (
       <p>
-        When you use the study aid, quiz generator, or email drafter, the relevant assignment text
+        When you use the study aid, quiz generator, or email writer, the relevant assignment text
         (and any Drive file or uploaded document text you attach) is sent to Google&rsquo;s Gemini
-        API to generate a response. This data is used only to produce that response for you —
-        never for advertising, and never to train AI models. Our use of Google Classroom data
-        complies with Google API Services User Data Policy, including the Limited Use
-        requirements.
+        API to generate a response. Only the text the feature needs is sent — not your name,
+        email, roll number, or anyone else&rsquo;s data. This is used only to produce that
+        response for you — never for advertising, and never to train AI models. Our use of Google
+        Classroom data complies with the Google API Services User Data Policy, including the
+        Limited Use requirements.
       </p>
     ),
   },

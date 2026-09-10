@@ -5,14 +5,19 @@ import { prisma } from "@/lib/prisma";
 import { encryptOptionalToken } from "@/lib/tokenCrypto";
 
 // Do not widen without updating the OAuth consent screen. Every scope here must
-// back a shipped feature (Phase 6.5 audit):
+// back a shipped feature, and every one is read-only:
 // - classroom.profile.emails / .photos: Teacher.email / photoUrl on the
-//   professors page and the email drafter's recipient list.
-// - gmail.compose: /api/email/draft saves drafts only, never sends.
-// No Drive scope is requested — the solver/quiz generator read Drive
-// attachments via a client-side Google Picker flow scoped to drive.file on
-// demand instead (see components/DriveAttachButton.tsx), which avoids the
-// restricted drive.readonly scope entirely.
+//   professors page and the email writer's recipient list.
+//
+// Two restricted scopes are deliberately NOT requested, because a restricted
+// scope widens what a breach of this app costs its users:
+// - No Drive scope. The solver and quiz generator read Drive attachments
+//   through a client-side Picker flow that mints a drive.file token for the
+//   one file the user picked (components/DriveAttachButton.tsx), so the server
+//   never holds a credential that can read a user's Drive.
+// - No Gmail scope. The email writer generates text and hands it to Gmail's
+//   compose URL for the user to send; the app cannot read, write, or send
+//   mail on anyone's behalf.
 const SCOPES = [
   "openid",
   "email",
@@ -23,7 +28,6 @@ const SCOPES = [
   "https://www.googleapis.com/auth/classroom.rosters.readonly",
   "https://www.googleapis.com/auth/classroom.profile.emails",
   "https://www.googleapis.com/auth/classroom.profile.photos",
-  "https://www.googleapis.com/auth/gmail.compose",
 ].join(" ");
 
 export const authOptions: NextAuthOptions = {

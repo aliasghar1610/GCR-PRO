@@ -93,8 +93,8 @@ export function LoginCard() {
           <Info className="size-4 shrink-0 mt-0.5 text-accent" />
           <p>
             We read your courses, coursework, grades, and instructor contacts from Google
-            Classroom. Content you submit to the AI Solver or Quiz Generator is processed by an
-            AI provider.{" "}
+            Classroom — read-only, and nothing else. No access to your Gmail or Drive. Content
+            you send to the AI Solver or Quiz Generator is processed by an AI provider.{" "}
             <Link href="/privacy" className="font-medium text-accent hover:underline">
               Read our privacy policy
             </Link>
