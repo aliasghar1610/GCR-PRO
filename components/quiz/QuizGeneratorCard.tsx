@@ -49,8 +49,16 @@ export function QuizGeneratorCard({
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  // An attach that failed used to leave attachmentText null, which is exactly
+  // what "user attached nothing" looks like — so the quiz was built from the
+  // assignment alone and silently ignored the file the user picked.
+  const [attachError, setAttachError] = useState<string | null>(null);
 
   async function handleGenerate() {
+    if (mode === "assignment" && attachError) {
+      setError("That attachment could not be read. Remove it or try another file before generating.");
+      return;
+    }
     setLoading(true);
     setError(null);
     setStep(0);
@@ -182,6 +190,7 @@ export function QuizGeneratorCard({
             setAttachmentText(null);
             setAttachedFileName(null);
           }}
+          onError={setAttachError}
         />
       )}
 

@@ -35,12 +35,22 @@ type Props = {
   onAttached: (text: string, fileName: string) => void;
   onClear: () => void;
   attachedFileName: string | null;
+  /**
+   * Notified when an attach attempt fails or is retried (null to clear).
+   * Without this the failure stayed inside this component, so the parent
+   * still believed nothing had been attached — indistinguishable from the
+   * user never picking a file — and generated from whatever else it had.
+   */
+  onError?: (message: string | null) => void;
 };
 
-export function DriveAttachButton({ onAttached, onClear, attachedFileName }: Props) {
+export function DriveAttachButton({ onAttached, onClear, attachedFileName, onError }: Props) {
   const [scriptsReady, setScriptsReady] = useState({ gis: false, gapi: false });
   const [status, setStatus] = useState<"idle" | "authorizing" | "picking" | "reading">("idle");
   const [error, setError] = useState<string | null>(null);
+  // Set when the page cap in lib/documentParse.ts trimmed the document —
+  // a partial read that stayed silent would look like the AI ignoring content.
+  const [notice, setNotice] = useState<string | null>(null);
 
   const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
@@ -96,8 +106,27 @@ export function DriveAttachButton({ onAttached, onClear, attachedFileName }: Pro
 
       setStatus("reading");
       const parsed = await fetch("/api/drive/extract-pdf", { method: "POST", body: bytes });
-      const data = await parsed.json().catch(() => ({}));
-      if (!parsed.ok) throw new Error(data.error ?? "Could not read that PDF");
+      const data = await parsed.json().catch(() => null);
+      if (!parsed.ok) {
+        // A body we can't parse as JSON means the request never reached the
+        // route's own error handling — a gateway timeout or a crashed
+        // function returns an HTML page. Reporting those as "could not read
+        // that PDF" blames the file for an infrastructure failure, so say
+        // what actually happened and include the status to look up.
+        if (!data || typeof data.error !== "string") {
+          throw new Error(
+            parsed.status === 504 || parsed.status === 502
+              ? `The server took too long to read that PDF (${parsed.status}). Try a smaller file.`
+              : `The server couldn't process that PDF (HTTP ${parsed.status}).`
+          );
+        }
+        throw new Error(data.error);
+      }
+      if (typeof data?.pageCount === "number" && typeof data?.pagesRead === "number") {
+        if (data.pagesRead < data.pageCount) {
+          setNotice(`Read the first ${data.pagesRead} of ${data.pageCount} pages.`);
+        }
+      }
       return data.text as string;
     }
 
@@ -137,10 +166,14 @@ export function DriveAttachButton({ onAttached, onClear, attachedFileName }: Pro
           try {
             setStatus("reading");
             const text = await extractFromDoc(doc.id, doc.mimeType, token);
+            onError?.(null);
             onAttached(text, doc.name);
             setStatus("idle");
           } catch (err) {
-            setError(err instanceof Error ? err.message : "Could not read that file");
+            const message = err instanceof Error ? err.message : "Could not read that file";
+            setNotice(null);
+            setError(message);
+            onError?.(message);
             setStatus("idle");
           }
         })
@@ -153,6 +186,8 @@ export function DriveAttachButton({ onAttached, onClear, attachedFileName }: Pro
 
   function handleClick() {
     setError(null);
+    setNotice(null);
+    onError?.(null);
     if (!ready || !clientId || !apiKey) {
       setError("Drive attach isn't configured yet.");
       return;
@@ -205,6 +240,7 @@ export function DriveAttachButton({ onAttached, onClear, attachedFileName }: Pro
         )}
       </div>
       {error && <p className="text-danger text-sm">{error}</p>}
+      {!error && notice && <p className="text-text-muted text-sm">{notice}</p>}
     </div>
   );
 }

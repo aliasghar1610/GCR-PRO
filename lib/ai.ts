@@ -10,12 +10,38 @@ const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 // verify against aistudio.google.com if this one stops working too.)
 const MODEL = process.env.GEMINI_MODEL ?? "gemini-3.6-flash";
 
+/**
+ * Ceiling on a single model call.
+ *
+ * Deliberately under a serverless host's function timeout: an unbounded call
+ * that outlasts the platform's limit gets the whole process killed, so the
+ * catch block never runs and nothing is logged — the request just disappears
+ * after N seconds with no explanation. Failing here instead keeps the error
+ * ours to report.
+ */
+export const AI_TIMEOUT_MS = 25_000;
+
 export async function askGemini(system: string, userContent: string): Promise<string> {
-  const response = await client.models.generateContent({
-    model: MODEL,
-    contents: userContent,
-    config: { systemInstruction: system },
-  });
+  // Unlike the parse path, this is genuinely async (a network round trip), so
+  // an abort signal actually interrupts it.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+
+  let response;
+  try {
+    response = await client.models.generateContent({
+      model: MODEL,
+      contents: userContent,
+      config: { systemInstruction: system, abortSignal: controller.signal },
+    });
+  } catch (err) {
+    if (controller.signal.aborted) {
+      throw new Error(`The AI request timed out after ${AI_TIMEOUT_MS / 1000}s.`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 
   const text = response.text;
   if (!text) {
