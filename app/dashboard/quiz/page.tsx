@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { FileQuestion } from "lucide-react";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { requireSessionUser } from "@/lib/sessionUser";
 import { prisma } from "@/lib/prisma";
 import { Card } from "@/components/ui/Card";
 import { CourseBadge } from "@/components/ui/CourseBadge";
@@ -14,8 +13,7 @@ export default async function QuizGeneratePage({
   searchParams: Promise<{ assignmentId?: string; documentId?: string }>;
 }) {
   const { assignmentId, documentId } = await searchParams;
-  const session = await getServerSession(authOptions);
-  const userId = session!.user.id;
+  const userId = (await requireSessionUser()).id;
 
   const [courses, assignments, quizzes, documents] = await Promise.all([
     prisma.course.findMany({ where: { userId }, orderBy: { name: "asc" } }),

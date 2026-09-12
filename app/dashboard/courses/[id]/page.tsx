@@ -1,9 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getServerSession } from "next-auth";
 import type { Prisma } from "@prisma/client";
 import { ExternalLink, FileText, Megaphone, GraduationCap, ClipboardList } from "lucide-react";
-import { authOptions } from "@/lib/auth";
+import { requireSessionUser } from "@/lib/sessionUser";
 import { prisma } from "@/lib/prisma";
 import { Card } from "@/components/ui/Card";
 import { CourseBadge } from "@/components/ui/CourseBadge";
@@ -51,8 +50,7 @@ export default async function CourseDetailPage({
 }) {
   const { id } = await params;
   const { tab: tabParam } = await searchParams;
-  const session = await getServerSession(authOptions);
-  const userId = session!.user.id;
+  const userId = (await requireSessionUser()).id;
 
   const course = await prisma.course.findFirst({
     where: { id, userId },

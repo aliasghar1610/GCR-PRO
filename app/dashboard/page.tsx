@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { ChevronRight, CalendarDays, Megaphone, Inbox } from "lucide-react";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { requireSessionUser } from "@/lib/sessionUser";
 import { Card } from "@/components/ui/Card";
 import { StatCard } from "@/components/ui/StatCard";
 import { StatusPill } from "@/components/ui/StatusPill";
@@ -21,9 +20,9 @@ function greeting(hour: number): string {
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 export default async function DashboardPage() {
-  const session = await getServerSession(authOptions);
-  const userId = session!.user.id;
-  const firstName = (session?.user?.name ?? "there").split(" ")[0];
+  const user = await requireSessionUser();
+  const userId = user.id;
+  const firstName = (user.name ?? "there").split(" ")[0];
   const now = new Date();
 
   const courses = await prisma.course.findMany({

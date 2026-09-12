@@ -1,6 +1,5 @@
 import { Circle, GraduationCap } from "lucide-react";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { requireSessionUser } from "@/lib/sessionUser";
 import { prisma } from "@/lib/prisma";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -9,8 +8,7 @@ import { GradeLineChart } from "@/components/grades/GradeLineChart";
 import { buildCourseGradeSeries } from "@/lib/gradeSeries";
 
 export default async function GradesPage() {
-  const session = await getServerSession(authOptions);
-  const userId = session!.user.id;
+  const userId = (await requireSessionUser()).id;
 
   const courses = await prisma.course.findMany({
     where: { userId },

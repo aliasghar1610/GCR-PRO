@@ -1,11 +1,9 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { requireSessionUser } from "@/lib/sessionUser";
 import { prisma } from "@/lib/prisma";
 import { DocumentsClient, type DocStatus } from "./DocumentsClient";
 
 export default async function DocumentsPage() {
-  const session = await getServerSession(authOptions);
-  const userId = session!.user.id;
+  const userId = (await requireSessionUser()).id;
 
   const documents = await prisma.document.findMany({
     where: { userId },

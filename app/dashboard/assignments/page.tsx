@@ -1,11 +1,9 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { requireSessionUser } from "@/lib/sessionUser";
 import { prisma } from "@/lib/prisma";
 import { AssignmentsClient, type AssignmentRow } from "./AssignmentsClient";
 
 export default async function AssignmentsPage() {
-  const session = await getServerSession(authOptions);
-  const userId = session!.user.id;
+  const userId = (await requireSessionUser()).id;
 
   const assignments = await prisma.assignment.findMany({
     where: { course: { userId } },

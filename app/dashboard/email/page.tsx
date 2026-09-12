@@ -1,5 +1,4 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { requireSessionUser } from "@/lib/sessionUser";
 import { prisma } from "@/lib/prisma";
 import { groupProfessors } from "@/lib/professors";
 import { EmailWriterClient } from "./EmailWriterClient";
@@ -10,8 +9,7 @@ export default async function EmailPage({
   searchParams: Promise<{ to?: string; name?: string }>;
 }) {
   const { to } = await searchParams;
-  const session = await getServerSession(authOptions);
-  const userId = session!.user.id;
+  const userId = (await requireSessionUser()).id;
 
   const courses = await prisma.course.findMany({
     where: { userId },

@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { BookOpen } from "lucide-react";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { requireSessionUser } from "@/lib/sessionUser";
 import { prisma } from "@/lib/prisma";
 import { CourseBadge } from "@/components/ui/CourseBadge";
 import { AvatarStack } from "@/components/ui/AvatarStack";
@@ -10,8 +9,7 @@ import { courseColorClasses } from "@/lib/courseColor";
 import { courseAveragePercent } from "@/lib/grade";
 
 export default async function CoursesPage() {
-  const session = await getServerSession(authOptions);
-  const userId = session!.user.id;
+  const userId = (await requireSessionUser()).id;
 
   const courses = await prisma.course.findMany({
     where: { userId },

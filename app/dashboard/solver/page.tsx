@@ -1,5 +1,4 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { requireSessionUser } from "@/lib/sessionUser";
 import { prisma } from "@/lib/prisma";
 import { SolverClient } from "./SolverClient";
 
@@ -9,8 +8,7 @@ export default async function SolverPage({
   searchParams: Promise<{ assignmentId?: string; documentId?: string }>;
 }) {
   const { assignmentId, documentId } = await searchParams;
-  const session = await getServerSession(authOptions);
-  const userId = session!.user.id;
+  const userId = (await requireSessionUser()).id;
 
   const [assignments, documents, user] = await Promise.all([
     prisma.assignment.findMany({

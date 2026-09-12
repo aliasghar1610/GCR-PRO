@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { Users, Mail, Sparkles } from "lucide-react";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { requireSessionUser } from "@/lib/sessionUser";
 import { prisma } from "@/lib/prisma";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -11,8 +10,7 @@ import { courseColorClasses } from "@/lib/courseColor";
 import { groupProfessors } from "@/lib/professors";
 
 export default async function ProfessorsPage() {
-  const session = await getServerSession(authOptions);
-  const userId = session!.user.id;
+  const userId = (await requireSessionUser()).id;
 
   const courses = await prisma.course.findMany({
     where: { userId },

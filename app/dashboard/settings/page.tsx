@@ -1,6 +1,5 @@
 import Link from "next/link";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { requireSessionUser } from "@/lib/sessionUser";
 import { prisma } from "@/lib/prisma";
 import { Card } from "@/components/ui/Card";
 import { cn } from "@/lib/cn";
@@ -25,8 +24,7 @@ export default async function SettingsPage({
   searchParams: Promise<{ tab?: string }>;
 }) {
   const { tab } = await searchParams;
-  const session = await getServerSession(authOptions);
-  const userId = session!.user.id;
+  const userId = (await requireSessionUser()).id;
 
   // Explicit select: never pull the whole User row into a component tree.
   // accessToken/refreshToken/extensionTokenHash are reduced to booleans here so
