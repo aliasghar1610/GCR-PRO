@@ -2,28 +2,26 @@ import "server-only";
 import mammoth from "mammoth";
 import { PDFParse } from "pdf-parse";
 
-export const PDF_MIME = "application/pdf";
-export const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-export const ACCEPTED_MIME_TYPES = [PDF_MIME, DOCX_MIME] as const;
+// Limits live in pdfLimits.ts because the browser-side parser needs the same
+// numbers and cannot import a "server-only" module. Re-exported here so the
+// existing server imports keep working from one place.
+import {
+  ACCEPTED_MIME_TYPES,
+  DOCX_MIME,
+  MAX_EXTRACTED_CHARS,
+  MAX_PDF_PAGES,
+  MAX_UPLOAD_BYTES,
+  PDF_MIME,
+} from "./pdfLimits";
 
-export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024; // 20MB
-export const MAX_EXTRACTED_CHARS = 60_000;
-
-/**
- * Hard cap on how many pages pdfjs is asked to extract.
- *
- * This — not PARSE_TIMEOUT_MS — is what actually bounds PDF work. pdfjs
- * extracts synchronously, so it holds the event loop for the whole parse and
- * the timer inside withTimeout cannot fire until the parse has already
- * finished. A document heavy enough to outlast the host's function timeout
- * would therefore run until the platform killed the process mid-request,
- * taking the catch block — and any log line explaining it — down with it.
- * Capping pages keeps the worst case bounded up front instead.
- *
- * 50 pages is far more than the AI needs: MAX_EXTRACTED_CHARS truncates the
- * text long before a 50-page document is exhausted.
- */
-export const MAX_PDF_PAGES = 50;
+export {
+  ACCEPTED_MIME_TYPES,
+  DOCX_MIME,
+  MAX_EXTRACTED_CHARS,
+  MAX_PDF_PAGES,
+  MAX_UPLOAD_BYTES,
+  PDF_MIME,
+};
 
 export type ParsedDocument = {
   text: string;

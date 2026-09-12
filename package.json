@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:security": "node --env-file=.env scripts/security-probe.mjs"
+    "test:security": "node --env-file=.env scripts/security-probe.mjs",
+    "predev": "node scripts/copy-pdf-worker.mjs",
+    "prebuild": "node scripts/copy-pdf-worker.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.21.0",

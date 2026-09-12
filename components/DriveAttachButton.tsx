@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Script from "next/script";
+import { extractPdfTextInBrowser } from "@/lib/pdfClient";
 
 // Minimal shape of the globals the Google Identity Services + Picker scripts
 // attach to `window` — there's no official TS package worth pulling in for
@@ -48,7 +49,7 @@ export function DriveAttachButton({ onAttached, onClear, attachedFileName, onErr
   const [scriptsReady, setScriptsReady] = useState({ gis: false, gapi: false });
   const [status, setStatus] = useState<"idle" | "authorizing" | "picking" | "reading">("idle");
   const [error, setError] = useState<string | null>(null);
-  // Set when the page cap in lib/documentParse.ts trimmed the document —
+  // Set when the page cap in lib/pdfLimits.ts trimmed the document —
   // a partial read that stayed silent would look like the AI ignoring content.
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -105,29 +106,25 @@ export function DriveAttachButton({ onAttached, onClear, attachedFileName, onErr
       const bytes = await res.arrayBuffer();
 
       setStatus("reading");
-      const parsed = await fetch("/api/drive/extract-pdf", { method: "POST", body: bytes });
-      const data = await parsed.json().catch(() => null);
-      if (!parsed.ok) {
-        // A body we can't parse as JSON means the request never reached the
-        // route's own error handling — a gateway timeout or a crashed
-        // function returns an HTML page. Reporting those as "could not read
-        // that PDF" blames the file for an infrastructure failure, so say
-        // what actually happened and include the status to look up.
-        if (!data || typeof data.error !== "string") {
-          throw new Error(
-            parsed.status === 504 || parsed.status === 502
-              ? `The server took too long to read that PDF (${parsed.status}). Try a smaller file.`
-              : `The server couldn't process that PDF (HTTP ${parsed.status}).`
-          );
-        }
-        throw new Error(data.error);
+      // Parsed here rather than POSTed to a route: a serverless request body
+      // caps at a few megabytes, so sending the bytes meant the platform
+      // rejected anything larger with a bare 413 before our own size check
+      // could produce a sensible message. The browser already has the file.
+      const parsed = await extractPdfTextInBrowser(bytes);
+
+      if (!parsed.hasText) {
+        throw new Error(
+          "That PDF has no selectable text — it looks scanned. Try a text-based PDF."
+        );
       }
-      if (typeof data?.pageCount === "number" && typeof data?.pagesRead === "number") {
-        if (data.pagesRead < data.pageCount) {
-          setNotice(`Read the first ${data.pagesRead} of ${data.pageCount} pages.`);
-        }
+      if (
+        parsed.pageCount !== null &&
+        parsed.pagesRead !== null &&
+        parsed.pagesRead < parsed.pageCount
+      ) {
+        setNotice(`Read the first ${parsed.pagesRead} of ${parsed.pageCount} pages.`);
       }
-      return data.text as string;
+      return parsed.text;
     }
 
     throw new Error("Unsupported file type — pick a Google Doc, Slides, or PDF");

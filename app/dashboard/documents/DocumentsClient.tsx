@@ -18,6 +18,7 @@ import { SlideOver } from "@/components/ui/SlideOver";
 import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/ToastProvider";
 import { formatBytes } from "@/lib/formatBytes";
+import { MAX_REQUEST_BODY_BYTES } from "@/lib/pdfLimits";
 import { cn } from "@/lib/cn";
 
 export type DocStatus = "QUEUED" | "PARSING" | "READY" | "UNSUPPORTED" | "FAILED";
@@ -56,6 +57,20 @@ export function DocumentsClient({ initialDocuments }: { initialDocuments: DocRow
   const inputRef = useRef<HTMLInputElement>(null);
 
   async function uploadFile(file: File) {
+    // Checked before the request, not after: this upload sends the file bytes
+    // to a serverless route, and a body over the platform's payload cap is
+    // rejected at the edge with a bare 413 that no handler of ours ever sees.
+    // Left to the server, the user got an unexplained failure.
+    if (file.size > MAX_REQUEST_BODY_BYTES) {
+      toast(
+        `"${file.name}" is ${formatBytes(file.size)} — uploads are limited to ` +
+          `${formatBytes(MAX_REQUEST_BODY_BYTES)}. Attach it from Drive instead, ` +
+          `which has no size limit.`,
+        "error"
+      );
+      return;
+    }
+
     const tempId = `temp-${crypto.randomUUID()}`;
     setDocuments((prev) => [
       {
@@ -155,7 +170,9 @@ export function DocumentsClient({ initialDocuments }: { initialDocuments: DocRow
         <p className="text-sm font-medium text-text-primary">
           Drag a file here, or click to browse
         </p>
-        <p className="text-xs text-text-muted">PDF or DOCX · up to 20MB</p>
+        <p className="text-xs text-text-muted">
+          PDF or DOCX · up to {formatBytes(MAX_REQUEST_BODY_BYTES)}
+        </p>
         <input
           ref={inputRef}
           type="file"

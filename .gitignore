@@ -43,3 +43,6 @@ yarn-error.log*
 next-env.d.ts
 
 /app/generated/prisma
+
+# copied from node_modules by scripts/copy-pdf-worker.mjs at dev/build time
+/public/pdf.worker.mjs
