@@ -38,6 +38,23 @@ const ACCEPTED = [
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ];
 
+/**
+ * Upload deadline. Generous on purpose — the route parses the file and writes
+ * to the database, and both can be slow on a poor connection — but finite, so
+ * a request that will never answer surfaces as an error instead of a
+ * permanent "Parsing" chip.
+ */
+const UPLOAD_TIMEOUT_MS = 60_000;
+
+/** Response body as JSON, or null when it isn't JSON at all (an HTML error page). */
+async function readJson(res: Response): Promise<{ error?: string; document?: DocRow } | null> {
+  try {
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
 const STATUS_STYLE: Record<DocStatus, { label: string; className: string }> = {
   QUEUED: { label: "Queued", className: "bg-bg-subtle text-text-muted" },
   PARSING: { label: "Parsing", className: "bg-accent-soft text-accent" },
@@ -93,12 +110,43 @@ export function DocumentsClient({ initialDocuments }: { initialDocuments: DocRow
     try {
       const form = new FormData();
       form.append("file", file);
-      const res = await fetch("/api/documents/upload", { method: "POST", body: form });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Upload failed");
-      setDocuments((prev) => prev.map((d) => (d.id === tempId ? data.document : d)));
+      // Bounded so a request that never comes back cannot leave the row
+      // spinning on "Parsing" forever. A platform that kills the function
+      // mid-flight closes the socket without a response, and an unbounded
+      // fetch simply waits — which is what a stuck upload looked like.
+      const res = await fetch("/api/documents/upload", {
+        method: "POST",
+        body: form,
+        signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
+      });
+      const data = await readJson(res);
+      if (!res.ok) {
+        // A body that isn't JSON didn't come from this route — it's a
+        // gateway timeout or payload rejection from the platform in front
+        // of it. Saying "upload failed" there blames the file for an
+        // infrastructure failure.
+        throw new Error(
+          data?.error ??
+            (res.status === 413
+              ? `"${file.name}" was rejected as too large by the server.`
+              : `The server couldn't process the upload (HTTP ${res.status}). ` +
+                `If this keeps happening, attach the file from Drive instead.`)
+        );
+      }
+      if (!data?.document) throw new Error("The server returned an unreadable response.");
+      const saved = data.document;
+      setDocuments((prev) => prev.map((d) => (d.id === tempId ? saved : d)));
     } catch (err) {
-      toast(err instanceof Error ? err.message : "Upload failed", "error");
+      const timedOut = err instanceof DOMException && err.name === "TimeoutError";
+      toast(
+        timedOut
+          ? `"${file.name}" timed out before the server answered. Try again, or ` +
+            `attach it from Drive, which parses in your browser.`
+          : err instanceof Error
+            ? err.message
+            : "Upload failed",
+        "error"
+      );
       setDocuments((prev) => prev.filter((d) => d.id !== tempId));
     }
   }
