@@ -22,6 +22,27 @@ export {
   PDF_MIME,
 };
 
+/**
+ * pdf-parse's page separator, e.g. "-- 3 of 12 --".
+ *
+ * It is emitted between pages regardless of whether those pages held any
+ * text, so a scanned PDF with no text layer still yields a non-empty string
+ * made entirely of these. Any check of the form `text.trim().length > 0` will
+ * pass on such a document and hand the model a few page numbers as if they
+ * were study material.
+ */
+const PAGE_MARKER_RE = /--\s*\d+\s+of\s+\d+\s*--/g;
+
+/**
+ * Whether extracted text contains anything beyond page separators and
+ * whitespace. Use this, never `text.length`, before sending a document to the
+ * model or accepting it as readable.
+ */
+export function hasMeaningfulText(text: string | null | undefined): boolean {
+  if (!text) return false;
+  return text.replace(PAGE_MARKER_RE, "").trim().length > 0;
+}
+
 export type ParsedDocument = {
   text: string;
   wordCount: number;

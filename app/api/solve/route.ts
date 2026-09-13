@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { askGemini } from "@/lib/ai";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rateLimit";
 import { truncate } from "@/lib/text";
+import { hasMeaningfulText } from "@/lib/documentParse";
 
 // Deliberately asks for a structured study aid, not a final answer to turn
 // in — keeps this on the right side of academic integrity. The assignment
@@ -82,6 +83,18 @@ export async function POST(req: Request) {
     const doc = await prisma.document.findFirst({ where: { id: documentId, userId } });
     if (!doc || doc.status !== "READY" || !doc.extractedText) {
       return NextResponse.json({ error: "Document not found or not ready" }, { status: 404 });
+    }
+    // See the quiz route: a scanned PDF parses to nothing but page markers,
+    // and answering "questions" drawn from those is worse than refusing.
+    if (!hasMeaningfulText(doc.extractedText)) {
+      return NextResponse.json(
+        {
+          error:
+            "That document has no selectable text — it looks scanned. " +
+            "Try a text-based PDF or a DOCX.",
+        },
+        { status: 400 }
+      );
     }
     material = `Document: ${doc.filename}\n\n${doc.extractedText}`;
   }

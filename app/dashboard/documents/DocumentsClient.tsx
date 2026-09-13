@@ -21,7 +21,13 @@ import { formatBytes } from "@/lib/formatBytes";
 import { MAX_REQUEST_BODY_BYTES } from "@/lib/pdfLimits";
 import { cn } from "@/lib/cn";
 
-export type DocStatus = "QUEUED" | "PARSING" | "READY" | "UNSUPPORTED" | "FAILED";
+export type DocStatus =
+  | "QUEUED"
+  | "PARSING"
+  | "READY"
+  | "UNSUPPORTED"
+  | "NO_TEXT"
+  | "FAILED";
 type DocRow = {
   id: string;
   filename: string;
@@ -62,6 +68,10 @@ const STATUS_STYLE: Record<DocStatus, { label: string; className: string }> = {
   PARSING: { label: "Parsing", className: "bg-accent-soft text-accent" },
   READY: { label: "Ready", className: "bg-success-soft text-success" },
   UNSUPPORTED: { label: "Unsupported", className: "bg-warning-soft text-warning" },
+  // Parsed fine, but held no selectable text — a scan or a page of images.
+  // Distinct from FAILED on purpose: nothing went wrong, the file simply has
+  // no text in it to read, and the fix is a different file rather than a retry.
+  NO_TEXT: { label: "No text found", className: "bg-warning-soft text-warning" },
   FAILED: { label: "Failed to parse", className: "bg-danger-soft text-danger" },
 };
 

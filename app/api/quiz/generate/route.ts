@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { askGemini } from "@/lib/ai";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rateLimit";
 import { truncate } from "@/lib/text";
+import { hasMeaningfulText } from "@/lib/documentParse";
 
 const DIFFICULTY_HINTS = {
   easy: "straightforward recall of key facts, terms, and definitions",
@@ -139,6 +140,20 @@ export async function POST(req: Request) {
     const doc = await prisma.document.findFirst({ where: { id: documentId, userId } });
     if (!doc || doc.status !== "READY" || !doc.extractedText) {
       return NextResponse.json({ error: "Document not found or not ready" }, { status: 404 });
+    }
+    // Also checked here, not just at upload: rows stored before the upload
+    // path learned to detect this are still READY with nothing but page
+    // markers in them, and generating from those is what produced a quiz of
+    // invented questions rather than an error.
+    if (!hasMeaningfulText(doc.extractedText)) {
+      return NextResponse.json(
+        {
+          error:
+            "That document has no selectable text — it looks scanned. " +
+            "Try a text-based PDF or a DOCX.",
+        },
+        { status: 400 }
+      );
     }
     title = `Quiz: ${doc.filename}`;
     material = doc.extractedText;

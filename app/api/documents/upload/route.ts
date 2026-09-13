@@ -9,6 +9,7 @@ import {
   MAX_EXTRACTED_CHARS,
   parseDocument,
   sniffMimeType,
+  hasMeaningfulText,
   type ParsedDocument,
 } from "@/lib/documentParse";
 import { truncate } from "@/lib/text";
@@ -164,7 +165,14 @@ async function handleUpload(req: Request, at: (s: Stage) => void) {
         size: meta.data.size,
         ...(parsed
           ? {
-              status: "READY",
+              // A PDF with no text layer — a scan, or pages that are images —
+              // parses without error and yields a string made entirely of
+              // pdf-parse's "-- 1 of 1 --" page markers. Stored as READY, that
+              // reached the quiz generator as study material, and the model,
+              // handed page numbers, invented plausible questions about
+              // nothing. The Drive attach path already refuses these; this one
+              // did not.
+              status: parsed.hasText && hasMeaningfulText(parsed.text) ? "READY" : "NO_TEXT",
               extractedText: truncate(parsed.text, MAX_EXTRACTED_CHARS),
               wordCount: parsed.wordCount,
               pageCount: parsed.pageCount,
