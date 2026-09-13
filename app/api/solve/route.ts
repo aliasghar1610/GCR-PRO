@@ -96,7 +96,11 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
-    material = `Document: ${doc.filename}\n\n${doc.extractedText}`;
+    // See the quiz route: the cap that counts is the one applied to the
+    // string actually sent to the model, using this route's own constant.
+    // The stored column is bounded at write time, but for a PDF that text was
+    // produced in the browser, so the server measures it again here.
+    material = `Document: ${doc.filename}\n\n${truncate(doc.extractedText, MAX_ATTACHMENT_CHARS)}`;
   }
 
   const userContent = `<assignment_material>\n${material}\n</assignment_material>`;

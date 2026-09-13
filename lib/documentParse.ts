@@ -30,6 +30,11 @@ export {
  * made entirely of these. Any check of the form `text.trim().length > 0` will
  * pass on such a document and hand the model a few page numbers as if they
  * were study material.
+ *
+ * Still relevant with PDFs parsed in the browser: the text arriving from the
+ * client comes out of the same library and carries the same markers, and the
+ * client's claim that a document has text is not one the server can take on
+ * trust.
  */
 const PAGE_MARKER_RE = /--\s*\d+\s+of\s+\d+\s*--/g;
 
@@ -46,19 +51,14 @@ export function hasMeaningfulText(text: string | null | undefined): boolean {
 export type ParsedDocument = {
   text: string;
   wordCount: number;
-  /** Pages in the file. Null when the PDF didn't report a count. */
+  /** Pages in the file. Null when the format doesn't report a count. */
   pageCount: number | null;
-  /** Pages actually parsed — below pageCount when MAX_PDF_PAGES applied. */
-  pagesRead: number | null;
   /**
    * Whether any real text came out.
    *
-   * Not the same as `text.length > 0`: pdf-parse separates pages with a
-   * "-- 1 of 3 --" joiner, so a scanned PDF with no text layer at all still
-   * returns a non-empty string made entirely of those markers. Callers that
-   * want "did we actually get content" must read this rather than measure
-   * `text`, or they will feed page numbers to the model and call it a
-   * document.
+   * Not the same as `text.length > 0` — see PAGE_MARKER_RE. Callers that want
+   * "did we actually get content" must read this rather than measure `text`,
+   * or they will feed page numbers to the model and call it a document.
    */
   hasText: boolean;
 };
@@ -67,6 +67,11 @@ export type ParsedDocument = {
  * Identifies the file from its own leading bytes rather than the filename or
  * the browser-supplied Content-Type, both of which the uploader controls.
  * Returns null when the content doesn't look like anything we accept.
+ *
+ * Only DOCX still reaches the server as bytes; PDFs are parsed in the browser
+ * and arrive as text (see lib/pdfClient.ts). The PDF branch stays because this
+ * is what rejects a PDF — or anything else — renamed to .docx before it is
+ * handed to a DOCX parser.
  */
 export function sniffMimeType(buffer: Buffer): (typeof ACCEPTED_MIME_TYPES)[number] | null {
   // "%PDF-"
@@ -90,9 +95,8 @@ export const PARSE_TIMEOUT_MS = 20_000;
  *
  * Only interrupts work that yields to the event loop — a timer cannot fire
  * while the loop is blocked, so this is no defence against a long synchronous
- * parse. MAX_PDF_PAGES is what bounds that case. Keep this as a backstop for
- * genuinely async stalls (a hung stream, a pathological zip), not as a
- * guarantee that parsing returns within `ms`.
+ * parse. Keep this as a backstop for genuinely async stalls (a hung stream, a
+ * pathological zip), not as a guarantee that parsing returns within `ms`.
  */
 export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout>;
@@ -105,65 +109,22 @@ export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 }
 
 /**
- * Extracts text from PDF bytes, reading at most MAX_PDF_PAGES.
+ * Parses DOCX bytes into text.
  *
- * getInfo() is a metadata-only read (single-digit milliseconds even on a
- * 300-page file), so the true page count is still reported when only a
- * prefix of the document was parsed — callers can tell the user what they
- * actually got rather than silently returning a partial document.
- */
-export async function parsePdf(buffer: Buffer): Promise<ParsedDocument> {
-  // Imported here rather than at module scope, deliberately.
-  //
-  // pdf-parse pulls in pdfjs-dist and @napi-rs/canvas, the latter a native
-  // binary that resolves to a per-platform package. Next's file tracing does
-  // not follow it into the serverless bundle, so on the host the import
-  // throws — and a top-level import that throws takes the whole route module
-  // down before any handler runs. Every upload then returned a bare HTML 500
-  // that no error handling of ours could annotate, including DOCX uploads,
-  // which have nothing to do with pdfjs.
-  //
-  // Kept inside the function, the same failure is an ordinary rejected
-  // promise: it lands in the caller's catch, the document is recorded as
-  // FAILED, and the response is still clean JSON.
-  const { PDFParse } = await import("pdf-parse");
-  const parser = new PDFParse({ data: buffer });
-  try {
-    let pageCount: number | null = null;
-    try {
-      const info = await withTimeout(parser.getInfo(), PARSE_TIMEOUT_MS);
-      pageCount = typeof info.total === "number" ? info.total : null;
-    } catch {
-      // Metadata is a nicety — a PDF that won't report a page count can
-      // still extract fine, so fall through to the text pass.
-    }
-
-    const parsed = await withTimeout(parser.getText({ first: MAX_PDF_PAGES }), PARSE_TIMEOUT_MS);
-    const text = parsed.text;
-    const pages = parsed.pages ?? [];
-    return {
-      text,
-      wordCount: countWords(text),
-      pageCount,
-      pagesRead: pages.length || null,
-      // Per-page text, so the page-joiner markers in `text` don't read as
-      // content on a PDF that has none.
-      hasText: pages.some((page) => page.text.trim().length > 0),
-    };
-  } finally {
-    await parser.destroy();
-  }
-}
-
-/**
- * Parses a PDF or DOCX buffer into text. Callers must have already validated
- * mimeType against ACCEPTED_MIME_TYPES and size against MAX_UPLOAD_BYTES.
+ * PDFs are deliberately absent. They are parsed in the browser now
+ * (lib/pdfClient.ts) and reach the server as text, because pdf-parse depends
+ * on pdfjs-dist and the native @napi-rs/canvas, and Next's file tracing does
+ * not carry that native binary into a serverless bundle — every PDF upload
+ * returned a platform 500 once deployed while working locally, where
+ * node_modules has the host's own build of it. The browser has neither
+ * problem, and the Drive attach path had already proven the approach in
+ * production.
+ *
+ * mammoth is pure JavaScript and bundles cleanly, so DOCX stays here.
+ * Callers must have already validated mimeType against ACCEPTED_MIME_TYPES
+ * and size against MAX_UPLOAD_BYTES.
  */
 export async function parseDocument(buffer: Buffer, mimeType: string): Promise<ParsedDocument> {
-  if (mimeType === PDF_MIME) {
-    return parsePdf(buffer);
-  }
-
   if (mimeType === DOCX_MIME) {
     const result = await withTimeout(mammoth.extractRawText({ buffer }), PARSE_TIMEOUT_MS);
     const text = result.value;
@@ -171,15 +132,21 @@ export async function parseDocument(buffer: Buffer, mimeType: string): Promise<P
       text,
       wordCount: countWords(text),
       pageCount: null,
-      pagesRead: null,
-      hasText: text.trim().length > 0,
+      hasText: hasMeaningfulText(text),
     };
   }
 
   throw new Error("Unsupported file type");
 }
 
-function countWords(text: string): number {
+/**
+ * Word count, measured here rather than taken from a caller.
+ *
+ * For a browser-parsed PDF this is the difference between a server-derived
+ * fact and a client-supplied claim. It is only ever displayed, but deriving
+ * it costs nothing and keeps one less client-controlled number in the row.
+ */
+export function countWords(text: string): number {
   const trimmed = text.trim();
   return trimmed ? trimmed.split(/\s+/).length : 0;
 }

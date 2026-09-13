@@ -31,12 +31,11 @@ export const MAX_PDF_PAGES = 50;
 /**
  * Largest file we'll accept at all.
  *
- * Only meaningful now that parsing happens in the browser. When bytes were
- * POSTed to a route this number was a fiction: Netlify Functions run on AWS
- * Lambda, whose synchronous request payload caps at ~6MB — and binary bodies
- * are base64-encoded in transit, so anything past roughly 4.5MB was rejected
- * by the platform before the handler ran, with a bare 413 no code here could
- * annotate. The browser has no such limit.
+ * Applies to DOCX, whose bytes are posted to the server. A PDF is parsed in
+ * the browser and only its text is sent, so its size is bounded by
+ * MAX_EXTRACTED_CHARS rather than by any byte limit. `size` is still recorded
+ * on a PDF row for display, but it is a number the client reports and nothing
+ * on the server may branch on it.
  */
 export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024; // 20MB
 
@@ -50,7 +49,8 @@ export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024; // 20MB
  * body before any handler runs. Nothing server-side can catch it or explain
  * it, so anything uploading bytes must check this in the browser first.
  *
- * The Drive attach path no longer needs this: it parses in the browser and
- * sends only text (see lib/pdfClient.ts). Direct uploads still POST bytes.
+ * DOCX is now the only thing that does. PDFs — both the Drive attach flow and
+ * direct uploads — parse in the browser and send text, so this limit does not
+ * apply to them.
  */
 export const MAX_REQUEST_BODY_BYTES = 4 * 1024 * 1024; // 4MB, under the ~4.5MB effective cap

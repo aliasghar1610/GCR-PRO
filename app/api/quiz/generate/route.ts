@@ -156,7 +156,12 @@ export async function POST(req: Request) {
       );
     }
     title = `Quiz: ${doc.filename}`;
-    material = doc.extractedText;
+    // Capped here, against this route's own constant, before anything reaches
+    // the model. The stored column is already bounded at write time, but for
+    // a PDF that text was produced in the browser — so the only cap that can
+    // be relied on is one this route applies to the string it is about to
+    // send. Never derived from anything the client reported.
+    material = truncate(doc.extractedText, MAX_ATTACHMENT_CHARS);
   }
 
   if (!material.trim()) {

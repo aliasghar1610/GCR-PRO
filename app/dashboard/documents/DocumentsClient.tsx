@@ -18,7 +18,8 @@ import { SlideOver } from "@/components/ui/SlideOver";
 import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/ToastProvider";
 import { formatBytes } from "@/lib/formatBytes";
-import { MAX_REQUEST_BODY_BYTES } from "@/lib/pdfLimits";
+import { MAX_REQUEST_BODY_BYTES, PDF_MIME } from "@/lib/pdfLimits";
+import { extractPdfTextInBrowser } from "@/lib/pdfClient";
 import { cn } from "@/lib/cn";
 
 export type DocStatus =
@@ -86,15 +87,19 @@ export function DocumentsClient({ initialDocuments }: { initialDocuments: DocRow
   const inputRef = useRef<HTMLInputElement>(null);
 
   async function uploadFile(file: File) {
-    // Checked before the request, not after: this upload sends the file bytes
-    // to a serverless route, and a body over the platform's payload cap is
-    // rejected at the edge with a bare 413 that no handler of ours ever sees.
-    // Left to the server, the user got an unexplained failure.
-    if (file.size > MAX_REQUEST_BODY_BYTES) {
+    const isPdf = file.type === PDF_MIME;
+
+    // The byte cap applies only to files whose bytes actually travel.
+    //
+    // A DOCX is posted to a serverless route and parsed there, so a body over
+    // the platform's payload cap is rejected at the edge with a bare 413 that
+    // no handler of ours ever sees — checked here so the user gets a reason.
+    // A PDF is parsed in this browser and only its text is posted, so the
+    // limit does not apply to it at all.
+    if (!isPdf && file.size > MAX_REQUEST_BODY_BYTES) {
       toast(
-        `"${file.name}" is ${formatBytes(file.size)} — uploads are limited to ` +
-          `${formatBytes(MAX_REQUEST_BODY_BYTES)}. Attach it from Drive instead, ` +
-          `which has no size limit.`,
+        `"${file.name}" is ${formatBytes(file.size)} — DOCX uploads are limited ` +
+          `to ${formatBytes(MAX_REQUEST_BODY_BYTES)}. PDFs have no size limit.`,
         "error"
       );
       return;
@@ -120,15 +125,48 @@ export function DocumentsClient({ initialDocuments }: { initialDocuments: DocRow
     );
 
     try {
-      const form = new FormData();
-      form.append("file", file);
+      // PDFs are parsed here, in the browser, and only the resulting text is
+      // posted. pdf-parse depends on pdfjs-dist and the native
+      // @napi-rs/canvas, which Next's file tracing does not carry into a
+      // serverless bundle — so the server-side parse worked locally and
+      // returned a platform 500 once deployed. This is the same code path the
+      // Drive attach button already uses (lib/pdfClient.ts), which has been
+      // working in production throughout.
+      let request: RequestInit;
+      if (isPdf) {
+        const parsed = await extractPdfTextInBrowser(await file.arrayBuffer());
+        if (!parsed.hasText) {
+          // Said here as well as enforced on the server, because this is
+          // where the user can still act on it — the row would otherwise
+          // land as "No text found" with no explanation of why.
+          throw new Error(
+            `"${file.name}" has no selectable text — it looks scanned. ` +
+              `Try a text-based PDF or a DOCX.`
+          );
+        }
+        request = {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            filename: file.name,
+            mimeType: PDF_MIME,
+            size: file.size,
+            text: parsed.text,
+            pageCount: parsed.pageCount,
+          }),
+        };
+      } else {
+        const form = new FormData();
+        form.append("file", file);
+        request = { method: "POST", body: form };
+      }
+
       // Bounded so a request that never comes back cannot leave the row
       // spinning on "Parsing" forever. A platform that kills the function
       // mid-flight closes the socket without a response, and an unbounded
       // fetch simply waits — which is what a stuck upload looked like.
       const res = await fetch("/api/documents/upload", {
-        method: "POST",
-        body: form,
+        ...request,
         signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
       });
       const data = await readJson(res);
@@ -237,7 +275,7 @@ export function DocumentsClient({ initialDocuments }: { initialDocuments: DocRow
           Drag a file here, or click to browse
         </p>
         <p className="text-xs text-text-muted">
-          PDF or DOCX · up to {formatBytes(MAX_REQUEST_BODY_BYTES)}
+          PDF (any size) or DOCX up to {formatBytes(MAX_REQUEST_BODY_BYTES)}
         </p>
         <input
           ref={inputRef}

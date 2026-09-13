@@ -7,6 +7,8 @@ import {
   ACCEPTED_MIME_TYPES,
   MAX_UPLOAD_BYTES,
   MAX_EXTRACTED_CHARS,
+  PDF_MIME,
+  countWords,
   parseDocument,
   sniffMimeType,
   hasMeaningfulText,
@@ -18,11 +20,42 @@ import { peekRateLimit, rateLimitRecord, rateLimitResponse } from "@/lib/rateLim
 const RATE_LIMIT = 30;
 const RATE_WINDOW_MS = 60 * 60 * 1000;
 
-const metaSchema = z.object({
-  filename: z.string().min(1).max(300),
-  mimeType: z.enum(ACCEPTED_MIME_TYPES),
-  size: z.number().int().positive().max(MAX_UPLOAD_BYTES),
-}).strict();
+/** DOCX: the browser posts bytes and the server parses them. */
+const metaSchema = z
+  .object({
+    filename: z.string().min(1).max(300),
+    mimeType: z.enum(ACCEPTED_MIME_TYPES),
+    size: z.number().int().positive().max(MAX_UPLOAD_BYTES),
+  })
+  .strict();
+
+/**
+ * PDF: the browser parses and posts only the text.
+ *
+ * This schema is the trust boundary for that path. Nothing here was produced
+ * by code we control at the time it arrives — the browser ran the parse, and
+ * a client can post this body directly without running one at all. So:
+ *
+ * - `.strict()`, so an unexpected key is rejected rather than reaching Prisma.
+ * - `text` is capped at MAX_EXTRACTED_CHARS, a server constant. The cap is
+ *   never read from the request; `size`, `pageCount` and the rest cannot
+ *   widen it.
+ * - `pageCount` is bounded but believed, because there is no longer a
+ *   server-side parse to derive it from. It is display-only, and the audit
+ *   below the schema records what that means.
+ * - `size` is the file's own byte length, recorded for display. It is
+ *   deliberately NOT used to size, cap or budget anything: the bytes never
+ *   reach this route, so the number is a claim.
+ */
+const pdfTextSchema = z
+  .object({
+    filename: z.string().min(1).max(300),
+    mimeType: z.literal(PDF_MIME),
+    size: z.number().int().positive().max(MAX_UPLOAD_BYTES),
+    text: z.string().max(MAX_EXTRACTED_CHARS),
+    pageCount: z.number().int().positive().max(100_000).nullable().optional(),
+  })
+  .strict();
 
 /**
  * Named steps, so a failure can say where it happened without leaking
@@ -74,6 +107,68 @@ async function handleUpload(req: Request, at: (s: Stage) => void) {
     return rateLimitResponse("document uploads", limit.resetAt);
   }
 
+  // A JSON body is the browser-parsed PDF path; multipart is DOCX bytes.
+  const isJson = (req.headers.get("content-type") ?? "").includes("application/json");
+  return isJson
+    ? storeBrowserParsedPdf(req, userId, at)
+    : storeUploadedBytes(req, userId, at);
+}
+
+/**
+ * PDF, parsed in the browser: only text crosses to the server.
+ *
+ * No byte-size ceiling applies here beyond the JSON body itself, which
+ * `text`'s cap already bounds — the platform's ~4.5MB request limit was only
+ * ever a constraint on shipping the file, and the file no longer moves.
+ */
+async function storeBrowserParsedPdf(req: Request, userId: string, at: (s: Stage) => void) {
+  at("read-body");
+  const raw = await req.json().catch(() => null);
+  const body = pdfTextSchema.safeParse(raw);
+  if (!body.success) {
+    // Generic, per the audit spec — the raw input is never echoed back.
+    await rateLimitRecord(userId, "document-upload");
+    return NextResponse.json({ error: "Invalid upload" }, { status: 400 });
+  }
+
+  at("parse");
+  // Measured here, from the string this route actually received, against a
+  // constant defined on the server. The zod cap above already rejects an
+  // oversized body; this second pass is what guarantees the stored column —
+  // and so everything later sent to the model — is bounded regardless of how
+  // the row got here.
+  const text = truncate(body.data.text, MAX_EXTRACTED_CHARS);
+
+  // The client's own scanned-PDF check is a courtesy to the user, not a
+  // control. This is the one that decides, and it reads the text rather than
+  // trusting any flag alongside it.
+  const readable = hasMeaningfulText(text);
+
+  at("db-write");
+  const [, doc] = await prisma.$transaction([
+    rateLimitRecord(userId, "document-upload"),
+    prisma.document.create({
+      data: {
+        userId,
+        filename: body.data.filename,
+        mimeType: PDF_MIME,
+        size: body.data.size,
+        status: readable ? "READY" : "NO_TEXT",
+        extractedText: text,
+        // Derived here, not accepted from the client, because it can be.
+        wordCount: countWords(text),
+        // Cannot be derived without parsing the file, so this one is the
+        // client's word. Display only — see the note on pdfTextSchema.
+        pageCount: body.data.pageCount ?? null,
+      },
+    }),
+  ]);
+
+  return NextResponse.json({ document: doc }, { status: 201 });
+}
+
+/** DOCX: bytes are posted and parsed here, with mammoth. */
+async function storeUploadedBytes(req: Request, userId: string, at: (s: Stage) => void) {
   at("read-body");
   const contentLength = Number(req.headers.get("content-length") ?? "0");
   if (contentLength > MAX_UPLOAD_BYTES) {
@@ -115,12 +210,15 @@ async function handleUpload(req: Request, at: (s: Stage) => void) {
   }
 
   // The declared Content-Type got us this far; the file's own leading bytes
-  // decide what actually gets parsed. A .docx renamed to .pdf (or a client
+  // decide what actually gets parsed. A PDF renamed to .docx (or a client
   // simply lying about the type) is rejected here rather than handed to a
   // parser that wasn't built for it.
   const buffer = Buffer.from(await file.arrayBuffer());
   const sniffed = sniffMimeType(buffer);
-  if (!sniffed || sniffed !== meta.data.mimeType) {
+  if (!sniffed || sniffed !== meta.data.mimeType || sniffed === PDF_MIME) {
+    // PDF is refused on this path on purpose: nothing here parses one any
+    // more, and accepting the bytes only to store an empty row would be
+    // worse than saying so. The client parses PDFs before posting.
     const [, doc] = await prisma.$transaction([
       rateLimitRecord(userId, "document-upload"),
       prisma.document.create({
@@ -138,13 +236,10 @@ async function handleUpload(req: Request, at: (s: Stage) => void) {
 
   // Parse before the row exists, then write once.
   //
-  // This used to INSERT a PARSING row, parse, then UPDATE it — two round
-  // trips around a CPU-bound parse. Against a distant database that is a
-  // second write this route has to survive, and if the function is killed
-  // in between (a serverless time limit, a cold start on a slow link) the
-  // row is stranded at PARSING forever with nothing left running to finish
-  // it. That is exactly what the UI showed: an upload stuck on "Parsing".
-  // The status is only ever known once parsing has finished, so there is
+  // Inserting a PARSING row, parsing, then updating it was two round trips
+  // around a CPU-bound parse, and if the function was killed in between the
+  // row was stranded at PARSING forever with nothing left running to advance
+  // it. The status is only known once parsing has finished, so there is
   // nothing for an intermediate row to record.
   at("parse");
   let parsed: ParsedDocument | null = null;
@@ -165,14 +260,7 @@ async function handleUpload(req: Request, at: (s: Stage) => void) {
         size: meta.data.size,
         ...(parsed
           ? {
-              // A PDF with no text layer — a scan, or pages that are images —
-              // parses without error and yields a string made entirely of
-              // pdf-parse's "-- 1 of 1 --" page markers. Stored as READY, that
-              // reached the quiz generator as study material, and the model,
-              // handed page numbers, invented plausible questions about
-              // nothing. The Drive attach path already refuses these; this one
-              // did not.
-              status: parsed.hasText && hasMeaningfulText(parsed.text) ? "READY" : "NO_TEXT",
+              status: hasMeaningfulText(parsed.text) ? "READY" : "NO_TEXT",
               extractedText: truncate(parsed.text, MAX_EXTRACTED_CHARS),
               wordCount: parsed.wordCount,
               pageCount: parsed.pageCount,

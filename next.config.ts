@@ -55,11 +55,11 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
-  // pdf-parse (via pdfjs-dist) tries to load a worker script at a path that
-  // only resolves under Node's own module resolution — bundling it through
-  // Turbopack/webpack breaks that path and pdfjs throws "Setting up fake
-  // worker failed". Leaving it external avoids the bundler touching it.
-  serverExternalPackages: ["pdf-parse"],
+  // No serverExternalPackages entry for pdf-parse any more: nothing on the
+  // server imports it. PDFs are parsed in the browser (lib/pdfClient.ts),
+  // which is what removed the native @napi-rs/canvas dependency from the
+  // serverless bundle — Next's file tracing never carried it, so every
+  // deployed PDF upload failed while working locally.
   images: {
     remotePatterns: [
       // Google account avatars and Classroom teacher profile photos.
