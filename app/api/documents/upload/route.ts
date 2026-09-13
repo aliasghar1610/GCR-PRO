@@ -23,7 +23,39 @@ const metaSchema = z.object({
   size: z.number().int().positive().max(MAX_UPLOAD_BYTES),
 }).strict();
 
+/**
+ * Named steps, so a failure can say where it happened without leaking
+ * anything. These are fixed internal labels — never an exception message, a
+ * Prisma error, or a stack trace, per the audit spec's error-handling rules.
+ */
+type Stage = "auth" | "rate-limit" | "read-body" | "parse" | "db-write";
+
 export async function POST(req: Request) {
+  let stage: Stage = "auth";
+  try {
+    return await handleUpload(req, (s) => {
+      stage = s;
+    });
+  } catch (err) {
+    // A correlation id ties this response to the server log line without
+    // putting the cause on the wire. Previously an unexpected throw here
+    // escaped as the platform's own HTML 500, which the client could only
+    // report as an unexplained failure.
+    const correlationId = crypto.randomUUID();
+    console.error(`[upload ${correlationId}] failed at stage "${stage}":`, err);
+    return NextResponse.json(
+      {
+        error: "The upload could not be completed. Please try again.",
+        stage,
+        correlationId,
+      },
+      { status: 500 }
+    );
+  }
+}
+
+async function handleUpload(req: Request, at: (s: Stage) => void) {
+  at("auth");
   const session = await getServerSession(authOptions);
   const userId = session?.user?.id;
   if (!userId) {
@@ -35,11 +67,13 @@ export async function POST(req: Request) {
   // three. Every round trip is a second or more against a distant database,
   // and three of them serially is what pushed this past a serverless
   // execution limit and left the UI stuck on "Parsing".
+  at("rate-limit");
   const limit = await peekRateLimit(userId, "document-upload", RATE_LIMIT, RATE_WINDOW_MS);
   if (!limit.allowed) {
     return rateLimitResponse("document uploads", limit.resetAt);
   }
 
+  at("read-body");
   const contentLength = Number(req.headers.get("content-length") ?? "0");
   if (contentLength > MAX_UPLOAD_BYTES) {
     // Recorded even though nothing is stored: these paths return before the
@@ -111,6 +145,7 @@ export async function POST(req: Request) {
   // it. That is exactly what the UI showed: an upload stuck on "Parsing".
   // The status is only ever known once parsing has finished, so there is
   // nothing for an intermediate row to record.
+  at("parse");
   let parsed: ParsedDocument | null = null;
   try {
     parsed = await parseDocument(buffer, sniffed);
@@ -118,6 +153,7 @@ export async function POST(req: Request) {
     console.error("Document parse failed:", err);
   }
 
+  at("db-write");
   const [, doc] = await prisma.$transaction([
     rateLimitRecord(userId, "document-upload"),
     prisma.document.create({

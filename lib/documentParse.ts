@@ -1,6 +1,5 @@
 import "server-only";
 import mammoth from "mammoth";
-import { PDFParse } from "pdf-parse";
 
 // Limits live in pdfLimits.ts because the browser-side parser needs the same
 // numbers and cannot import a "server-only" module. Re-exported here so the
@@ -93,6 +92,20 @@ export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
  * actually got rather than silently returning a partial document.
  */
 export async function parsePdf(buffer: Buffer): Promise<ParsedDocument> {
+  // Imported here rather than at module scope, deliberately.
+  //
+  // pdf-parse pulls in pdfjs-dist and @napi-rs/canvas, the latter a native
+  // binary that resolves to a per-platform package. Next's file tracing does
+  // not follow it into the serverless bundle, so on the host the import
+  // throws — and a top-level import that throws takes the whole route module
+  // down before any handler runs. Every upload then returned a bare HTML 500
+  // that no error handling of ours could annotate, including DOCX uploads,
+  // which have nothing to do with pdfjs.
+  //
+  // Kept inside the function, the same failure is an ordinary rejected
+  // promise: it lands in the caller's catch, the document is recorded as
+  // FAILED, and the response is still clean JSON.
+  const { PDFParse } = await import("pdf-parse");
   const parser = new PDFParse({ data: buffer });
   try {
     let pageCount: number | null = null;

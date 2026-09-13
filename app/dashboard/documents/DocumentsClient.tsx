@@ -47,7 +47,9 @@ const ACCEPTED = [
 const UPLOAD_TIMEOUT_MS = 60_000;
 
 /** Response body as JSON, or null when it isn't JSON at all (an HTML error page). */
-async function readJson(res: Response): Promise<{ error?: string; document?: DocRow } | null> {
+async function readJson(
+  res: Response
+): Promise<{ error?: string; document?: DocRow; stage?: string; correlationId?: string } | null> {
   try {
     return await res.json();
   } catch {
@@ -125,6 +127,12 @@ export function DocumentsClient({ initialDocuments }: { initialDocuments: DocRow
         // gateway timeout or payload rejection from the platform in front
         // of it. Saying "upload failed" there blames the file for an
         // infrastructure failure.
+        // The route names the step it failed at and a correlation id. Shown
+        // verbatim because it is the only diagnostic a user can hand back —
+        // it is a fixed internal label, never an exception message.
+        if (data?.error && data.stage) {
+          throw new Error(`${data.error} (step: ${data.stage}, ref ${data.correlationId ?? "?"})`);
+        }
         throw new Error(
           data?.error ??
             (res.status === 413
